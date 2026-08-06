@@ -23,7 +23,7 @@ class TradingCopyApp extends StatelessWidget {
           background: Color(0xFF0D1117),
           error: Color(0xFFFF5555),
         ),
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           color: Color(0xFF161B22),
           elevation: 2,
           margin: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
