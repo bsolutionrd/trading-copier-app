@@ -2337,60 +2337,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // SUPABASE CONFIGURATION (NEW SECTION)
-              const Text(
-                'Base de Datos Supabase',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Enlaza la app en la nube para sincronizar con los bots de MetaTrader.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              
-              const Text('Supabase Project URL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _supaUrlCtrl,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _buildInputDecoration('https://xxx.supabase.co', Icons.link_rounded),
-              ),
-              const SizedBox(height: 12),
-              
-              const Text('Supabase Anon Key (API Key)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _supaKeyCtrl,
-                obscureText: true,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _buildInputDecoration('Ingresar Anon Key', Icons.key_rounded),
-              ),
-              const SizedBox(height: 16),
-              
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: ElevatedButton(
-                  onPressed: () {
-                    _saveSupaConfig(_supaUrlCtrl.text.trim(), _supaKeyCtrl.text.trim());
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00E676),
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text('ENLAZAR SUPABASE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-                ),
-              ),
-              
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20.0),
-                child: Divider(color: Color(0xFF1E293B)),
-              ),
-              
               // BROKER / MT4 CONFIGURATION
               const Text(
                 'Configuración del Broker',
