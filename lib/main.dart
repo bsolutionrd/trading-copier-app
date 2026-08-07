@@ -154,8 +154,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   bool _isLoading = false;
 
   // Supabase Configuration State
-  String _supabaseUrl = "https://tu-proyecto.supabase.co";
-  String _supabaseApiKey = "TU_SUPABASE_ANON_KEY_AQUI";
+  String _supabaseUrl = "https://ubmtnztewrajmkzvdmou.supabase.co";
+  String _supabaseApiKey = "sb_publishable_eGnjukYwaG5YoLrPYwFP_w_QuAEpLkx";
 
   // Broker Config State
   String _apiKey = "pk_live_51Nx...8hYt";
