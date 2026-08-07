@@ -39,6 +39,28 @@ class TradingCopyApp extends StatelessWidget {
 }
 
 // Models
+class AppUser {
+  final String name;
+  final String email;
+  final String username;
+  final String password;
+  final String role; // 'admin' or 'user'
+  String? licenseToken;
+  bool isLicenseActive;
+  DateTime? licenseExpiry;
+
+  AppUser({
+    required this.name,
+    required this.email,
+    required this.username,
+    required this.password,
+    required this.role,
+    this.licenseToken,
+    this.isLicenseActive = false,
+    this.licenseExpiry,
+  });
+}
+
 class TradeSignal {
   final String id;
   final String symbol;
@@ -109,16 +131,42 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  // Authentication State
+  AppUser? _currentUser;
+  final TextEditingController _loginUserCtrl = TextEditingController();
+  final TextEditingController _loginPassCtrl = TextEditingController();
+
+  // Simulated Database of Users
+  final List<AppUser> _usersList = [
+    AppUser(
+      name: "Administrador",
+      email: "admin@sniper.com",
+      username: "admin",
+      password: "12345678",
+      role: "admin",
+      isLicenseActive: true,
+    ),
+    AppUser(
+      name: "Cliente Demo",
+      email: "cliente@demo.com",
+      username: "cliente",
+      password: "12345678",
+      role: "user",
+      isLicenseActive: false,
+    ),
+  ];
+
+  // Global Generated Licenses list
+  final List<String> _generatedLicenses = [
+    "SNIPER-88A9-99B2-X1",
+    "SNIPER-44C1-22E4-F7",
+  ];
+
+  // Navigation indices for user / admin
   int _currentIndex = 0;
 
   // Tab state inside Operations
   bool _showActiveTrades = true;
-
-  // Licensing State
-  String _licenseToken = "ACT-9928-TRDR-X7";
-  bool _isLicenseVerified = true;
-  String _licenseStatus = "Licencia Activa";
-  int _licenseDaysLeft = 24;
 
   // Account State
   double _accountBalance = 10450.25;
@@ -289,31 +337,158 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void dispose() {
     _priceUpdateTimer?.cancel();
+    _loginUserCtrl.dispose();
+    _loginPassCtrl.dispose();
     super.dispose();
   }
 
-  void _verifyLicense(String token) {
+  // --- BUSINESS LOGIC ACTIONS ---
+
+  void _login() {
+    final usernameInput = _loginUserCtrl.text.trim();
+    final passwordInput = _loginPassCtrl.text;
+
+    AppUser? foundUser;
+    for (var user in _usersList) {
+      if (user.username.toLowerCase() == usernameInput.toLowerCase() &&
+          user.password == passwordInput) {
+        foundUser = user;
+        break;
+      }
+    }
+
+    if (foundUser != null) {
+      setState(() {
+        _currentUser = foundUser;
+        _currentIndex = 0;
+        _loginUserCtrl.clear();
+        _loginPassCtrl.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sesión iniciada como: ${foundUser.name}'),
+          backgroundColor: const Color(0xFF00E676),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Usuario o contraseña incorrectos'),
+          backgroundColor: Color(0xFFFF4D4D),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _logout() {
     setState(() {
-      if (token.isNotEmpty && token.length > 5) {
-        _licenseToken = token;
-        _isLicenseVerified = true;
-        _licenseStatus = "Licencia Activa";
-        _licenseDaysLeft = 24; // demo constant
+      _currentUser = null;
+      _currentIndex = 0;
+    });
+  }
+
+  void _verifyLicense(String token) {
+    if (_currentUser == null) return;
+    
+    // Check if the token is in the list of generated licenses
+    if (_generatedLicenses.contains(token.trim())) {
+      setState(() {
+        _currentUser!.licenseToken = token.trim();
+        _currentUser!.isLicenseActive = true;
+        _currentUser!.licenseExpiry = DateTime.now().add(const Duration(days: 30));
+        
         _alerts.insert(
           0,
           TradeAlert(
-            message: "Licencia verificada con éxito. Token cargado.",
+            message: "El usuario '${_currentUser!.username}' activó la licencia:\n$token",
             category: "Sistema",
             type: "success",
             timestamp: DateTime.now(),
           ),
         );
-      } else {
-        _isLicenseVerified = false;
-        _licenseStatus = "Licencia Vencida";
-        _licenseDaysLeft = 0;
-      }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Licencia activada con éxito para ${_currentUser!.name}'),
+          backgroundColor: const Color(0xFF00E676),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Licencia no válida o no encontrada en el sistema'),
+          backgroundColor: Color(0xFFFF4D4D),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _generateLicenseToken() {
+    final random = Random();
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    String part1 = List.generate(4, (index) => chars[random.nextInt(chars.length)]).join();
+    String part2 = List.generate(4, (index) => chars[random.nextInt(chars.length)]).join();
+    String part3 = List.generate(2, (index) => chars[random.nextInt(chars.length)]).join();
+    
+    final token = "SNIPER-$part1-$part2-$part3";
+    setState(() {
+      _generatedLicenses.insert(0, token);
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Nueva licencia generada: $token'),
+        backgroundColor: const Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _createNewUser(String name, String email, String username, String password) {
+    if (name.isEmpty || email.isEmpty || username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor rellene todos los campos'),
+          backgroundColor: Color(0xFFFF4D4D),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Check if username already exists
+    if (_usersList.any((u) => u.username.toLowerCase() == username.toLowerCase())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El nombre de usuario ya existe'),
+          backgroundColor: Color(0xFFFF4D4D),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _usersList.add(AppUser(
+        name: name,
+        email: email,
+        username: username,
+        password: password,
+        role: "user",
+        isLicenseActive: false,
+      ));
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Usuario "$username" creado exitosamente'),
+        backgroundColor: const Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _saveApiConfig(String apiKey, String secret, String server, String acc) {
@@ -341,14 +516,35 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  // --- UI SCREENS BUILDERS ---
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> screens = [
+    // If not logged in, return the Login Screen
+    if (_currentUser == null) {
+      return _buildLoginScreen();
+    }
+
+    // Dynamic Navigation items and screens based on role
+    final isAdmin = _currentUser!.role == 'admin';
+
+    // Admin Navigation Panels
+    final List<Widget> adminScreens = [
+      _buildAdminPanelScreen(),
+      _buildAdminLicensesScreen(),
+      _buildDashboardScreen(),
+      _buildConfigScreen(),
+    ];
+
+    // User Navigation Panels
+    final List<Widget> userScreens = [
       _buildLicenseScreen(),
       _buildDashboardScreen(),
       _buildAlertsScreen(),
       _buildConfigScreen(),
     ];
+
+    final currentScreen = isAdmin ? adminScreens[_currentIndex] : userScreens[_currentIndex];
 
     return Scaffold(
       appBar: AppBar(
@@ -387,9 +583,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         backgroundColor: const Color(0xFF060B0E),
         elevation: 0,
         actions: [
+          // Expirar sesión button
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: Color(0xFF64748B), size: 20),
+            onPressed: _logout,
+            tooltip: "Cerrar Sesión",
+          ),
           Container(
-            margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            margin: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: const Color(0xFF0D131C),
               borderRadius: BorderRadius.circular(20),
@@ -402,18 +604,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               children: [
                 CircleAvatar(
                   radius: 3.5,
-                  backgroundColor: _isLicenseVerified
+                  backgroundColor: (isAdmin || _currentUser!.isLicenseActive)
                       ? const Color(0xFF00E676)
                       : const Color(0xFFFF4D4D),
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  _isLicenseVerified ? 'Licencia OK' : 'Sin Licencia',
+                  (isAdmin || _currentUser!.isLicenseActive) ? 'Licencia OK' : 'Sin Licencia',
                   style: TextStyle(
-                    color: _isLicenseVerified
+                    color: (isAdmin || _currentUser!.isLicenseActive)
                         ? const Color(0xFF00E676)
                         : const Color(0xFFFF4D4D),
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -422,7 +624,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           )
         ],
       ),
-      body: screens[_currentIndex],
+      body: currentScreen,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(
@@ -442,34 +644,218 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           unselectedItemColor: const Color(0xFF64748B),
           selectedFontSize: 11,
           unselectedFontSize: 11,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.flash_on_rounded),
-              label: 'Licencia',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.tune_rounded),
-              label: 'Operaciones',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_none_rounded),
-              label: 'Alertas',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              label: 'Configurar',
-            ),
-          ],
+          items: isAdmin
+              ? const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.people_alt_outlined),
+                    label: 'Usuarios',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.vpn_key_outlined),
+                    label: 'Licencias',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.tune_rounded),
+                    label: 'Operaciones',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.settings_outlined),
+                    label: 'Configurar',
+                  ),
+                ]
+              : const [
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.flash_on_rounded),
+                    label: 'Licencia',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.tune_rounded),
+                    label: 'Operaciones',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.notifications_none_rounded),
+                    label: 'Alertas',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.settings_outlined),
+                    label: 'Configurar',
+                  ),
+                ],
         ),
       ),
     );
   }
 
-  // --- SCREENS ---
+  // --- LOGIN SCREEN ---
+  Widget _buildLoginScreen() {
+    return Scaffold(
+      body: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 28.0),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo de Mira
+                const Icon(Icons.gps_fixed, color: Color(0xFF00E676), size: 72),
+                const SizedBox(height: 16),
+                
+                // Sniper Money EA Branding text
+                const Text(
+                  'SNIPER',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 32,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const Text(
+                  'MONEY EA',
+                  style: TextStyle(
+                    color: Color(0xFF00E676),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    letterSpacing: 2.0,
+                  ),
+                ),
+                const SizedBox(height: 48),
+                
+                // Login Form
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Iniciar Sesión',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Ingresa tus credenciales para acceder al sistema.',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                
+                // Username field
+                TextField(
+                  controller: _loginUserCtrl,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: _buildInputDecoration('Nombre de usuario', Icons.person_outline),
+                ),
+                const SizedBox(height: 16),
+                
+                // Password field
+                TextField(
+                  controller: _loginPassCtrl,
+                  obscureText: true,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
+                ),
+                const SizedBox(height: 32),
+                
+                // Login Button
+                Container(
+                  width: double.infinity,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ElevatedButton(
+                    onPressed: _login,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'INICIAR SESIÓN',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        letterSpacing: 0.5,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                const SizedBox(height: 20),
+                const Text(
+                  'Admin temporal: admin | Pass: 12345678',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-  // 1. License Screen
+  // --- USER PANELS & LOCK LOGIC ---
+
+  // Checks if user is locked out from a tab
+  Widget _runLockedPanelWrapper(Widget panel) {
+    final isLocked = _currentUser!.role == 'user' && !_currentUser!.isLicenseActive;
+    if (isLocked) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF4D4D).withOpacity(0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: Color(0xFFFF4D4D),
+                  size: 64,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Acceso Restringido',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Debes validar una licencia activa para acceder a este panel. Dirígete a la pestaña "Licencia" e introduce tu token.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return panel;
+  }
+
+  // License Activation Panel for Users
   Widget _buildLicenseScreen() {
-    final tokenController = TextEditingController(text: _licenseToken);
+    final tokenController = TextEditingController();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -494,7 +880,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               color: const Color(0xFF0D131C),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: _isLicenseVerified
+                color: _currentUser!.isLicenseActive
                     ? const Color(0xFF00E676).withOpacity(0.3)
                     : const Color(0xFFFF4D4D).withOpacity(0.3),
                 width: 1,
@@ -505,14 +891,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _isLicenseVerified
+                    color: _currentUser!.isLicenseActive
                         ? const Color(0xFF00E676).withOpacity(0.1)
                         : const Color(0xFFFF4D4D).withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    _isLicenseVerified ? Icons.verified_user_outlined : Icons.gpp_bad_outlined,
-                    color: _isLicenseVerified
+                    _currentUser!.isLicenseActive ? Icons.verified_user_outlined : Icons.gpp_bad_outlined,
+                    color: _currentUser!.isLicenseActive
                         ? const Color(0xFF00E676)
                         : const Color(0xFFFF4D4D),
                     size: 28,
@@ -524,9 +910,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _licenseStatus.toUpperCase(),
+                        _currentUser!.isLicenseActive ? "LICENCIA ACTIVA" : "SIN LICENCIA",
                         style: TextStyle(
-                          color: _isLicenseVerified
+                          color: _currentUser!.isLicenseActive
                               ? const Color(0xFF00E676)
                               : const Color(0xFFFF4D4D),
                           fontSize: 16,
@@ -534,9 +920,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
-                        'Sistema funcionando correctamente',
-                        style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                      Text(
+                        _currentUser!.isLicenseActive
+                            ? 'Válida por 30 días.'
+                            : 'Debes introducir una licencia del Administrador.',
+                        style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                       ),
                     ],
                   ),
@@ -544,45 +932,48 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 20),
           
-          // Remaining Time Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0D131C),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Tiempo Restante',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _isLicenseVerified ? '$_licenseDaysLeft DÍAS' : 'EXPIRADA',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 1.0,
+          if (_currentUser!.isLicenseActive) ...[
+            const SizedBox(height: 20),
+            // Remaining Time Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D131C),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFF1E293B), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tiempo Restante',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                   ),
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Expira el: 06 / 09 / 2026',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    '24 DÍAS',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Token activo: ${_currentUser!.licenseToken ?? "Ninguno"}',
+                    style: const TextStyle(color: Color(0xFF00E676), fontSize: 11),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
+          
           const SizedBox(height: 24),
           const Text(
-            'Token de Licencia',
+            'Ingresar Token de Licencia',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
           ),
           const SizedBox(height: 10),
@@ -594,8 +985,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             decoration: InputDecoration(
               fillColor: const Color(0xFF0D131C),
               filled: true,
+              hintText: "SNIPER-XXXX-XXXX-XX",
               prefixIcon: const Icon(Icons.vpn_key_outlined, color: Color(0xFF00E676)),
-              suffixIcon: _isLicenseVerified
+              suffixIcon: _currentUser!.isLicenseActive
                   ? const Icon(Icons.check_circle, color: Color(0xFF00E676))
                   : null,
               border: OutlineInputBorder(
@@ -640,7 +1032,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 children: [
                   const Spacer(),
                   const Text(
-                    'VALIDAR LICENCIA',
+                    'ACTIVAR LICENCIA',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 14,
@@ -666,9 +1058,318 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // 2. Dashboard Screen (Operations)
+  // --- ADMINISTRATOR MANAGEMENT PANELS ---
+
+  // Admin Panel 1: Create and View Users
+  Widget _buildAdminPanelScreen() {
+    final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final userCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Gestión de Usuarios',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Crea nuevos usuarios del sistema Sniper Money EA.',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          
+          // Form Box
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D131C),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Crear Nuevo Usuario', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                const SizedBox(height: 16),
+                
+                TextField(
+                  controller: nameCtrl,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: _buildInputDecoration('Nombre Completo', Icons.person_outline),
+                ),
+                const SizedBox(height: 12),
+                
+                TextField(
+                  controller: emailCtrl,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: _buildInputDecoration('Correo Electrónico', Icons.email_outlined),
+                ),
+                const SizedBox(height: 12),
+                
+                TextField(
+                  controller: userCtrl,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: _buildInputDecoration('Nombre de Usuario', Icons.alternate_email),
+                ),
+                const SizedBox(height: 12),
+                
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
+                ),
+                const SizedBox(height: 20),
+                
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      _createNewUser(
+                        nameCtrl.text.trim(),
+                        emailCtrl.text.trim(),
+                        userCtrl.text.trim(),
+                        passCtrl.text,
+                      );
+                      nameCtrl.clear();
+                      emailCtrl.clear();
+                      userCtrl.clear();
+                      passCtrl.clear();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00E676),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text('CREAR USUARIO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          const Text('Usuarios Registrados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+          const SizedBox(height: 12),
+          
+          // User List in DB
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _usersList.length,
+            itemBuilder: (context, index) {
+              final user = _usersList[index];
+              final hasActive = user.role == 'admin' || user.isLicenseActive;
+              return Container(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0D131C),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: hasActive ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFFFF4D4D).withOpacity(0.12),
+                      child: Icon(
+                        user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
+                        color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                          const SizedBox(height: 2),
+                          Text('@${user.username} • ${user.email}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: hasActive ? const Color(0xFF00E676).withOpacity(0.15) : const Color(0xFFFF4D4D).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        user.role == 'admin' ? 'ADMIN' : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
+                        style: TextStyle(
+                          color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Admin Panel 2: License Generation & Status Checking
+  Widget _buildAdminLicensesScreen() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Generador de Licencias',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Genera tokens aleatorios válidos para el registro de clientes.',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          
+          // Validation Button (Premium Green Gradient)
+          Container(
+            width: double.infinity,
+            height: 52,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ElevatedButton(
+              onPressed: _generateLicenseToken,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(),
+                  const Text(
+                    'GENERAR LICENCIA ALEATORIA',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 0.5,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.black,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.add, color: Color(0xFF00E676), size: 16),
+                  )
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 28),
+          const Text('Licencias Activas en el Sistema', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+          const SizedBox(height: 12),
+          
+          _generatedLicenses.isEmpty
+              ? const Center(child: Text('No hay licencias generadas aún.', style: TextStyle(color: Color(0xFF64748B))))
+              : ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _generatedLicenses.length,
+                  itemBuilder: (context, index) {
+                    final license = _generatedLicenses[index];
+                    
+                    // Check if anyone is using it
+                    AppUser? userUsing;
+                    for (var u in _usersList) {
+                      if (u.licenseToken == license) {
+                        userUsing = u;
+                        break;
+                      }
+                    }
+                    
+                    final isUsed = userUsing != null;
+
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D131C),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.key, color: Color(0xFF00E676), size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  license,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13, letterSpacing: 0.5),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  isUsed ? 'Activada por: ${userUsing.name} (@${userUsing.username})' : 'Disponible para activación',
+                                  style: TextStyle(
+                                    color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isUsed ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFF64748B).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isUsed ? 'USADA' : 'LIBRE',
+                              style: TextStyle(
+                                color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ],
+      ),
+    );
+  }
+
+  // --- OPERATIONS DASHBOARD (WITH BLOCKING FOR REGULAR USERS) ---
   Widget _buildDashboardScreen() {
-    return Column(
+    return _runLockedPanelWrapper(Column(
       children: [
         // Connected Account Header Card
         Container(
@@ -899,14 +1600,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
 
-        // Trades List (Conditional rendering)
+        // Trades List
         Expanded(
           child: _showActiveTrades
               ? _buildActiveTradesList()
               : _buildClosedTradesList(),
         ),
-      ],
-    );
+      ]));
   }
 
   Widget _buildActiveTradesList() {
@@ -1121,300 +1821,306 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // 3. Alerts & History Screen
+  // --- ALERTS SCREEN (WITH BLOCKING FOR REGULAR USERS) ---
   Widget _buildAlertsScreen() {
-    // Filter logic
-    final filteredAlerts = _selectedAlertFilter == "Todas"
-        ? _alerts
-        : _alerts.where((alert) => alert.category == _selectedAlertFilter).toList();
+    return _runLockedPanelWrapper(Builder(
+      builder: (context) {
+        final filteredAlerts = _selectedAlertFilter == "Todas"
+            ? _alerts
+            : _alerts.where((alert) => alert.category == _selectedAlertFilter).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Title Row
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-          child: Row(
-            children: const [
-              Icon(Icons.notifications_active_outlined, color: Color(0xFF00E676), size: 22),
-              SizedBox(width: 8),
-              Text(
-                'Alertas del Sistema',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ],
-          ),
-        ),
-
-        // Horizontal filter pills
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            children: ["Todas", "Operaciones", "Sistema", "Errores"].map((filter) {
-              final isSelected = _selectedAlertFilter == filter;
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4.0),
-                child: ChoiceChip(
-                  label: Text(
-                    filter,
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white,
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: const Color(0xFF00E676),
-                  backgroundColor: const Color(0xFF0D131C),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(
-                      color: isSelected ? const Color(0xFF00E676) : const Color(0xFF1E293B),
-                    ),
-                  ),
-                  onSelected: (selected) {
-                    if (selected) {
-                      setState(() {
-                        _selectedAlertFilter = filter;
-                      });
-                    }
-                  },
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Alerts List
-        Expanded(
-          child: filteredAlerts.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No hay alertas en esta categoría.',
-                    style: TextStyle(color: Color(0xFF64748B)),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemCount: filteredAlerts.length,
-                  itemBuilder: (context, index) {
-                    final alert = filteredAlerts[index];
-                    IconData icon = Icons.info_outline;
-                    Color color = const Color(0xFF00E676);
-
-                    // Map icon and color to mimic screenshot design
-                    if (alert.message.contains("BUY")) {
-                      icon = Icons.arrow_upward_rounded;
-                      color = const Color(0xFF00E676);
-                    } else if (alert.message.contains("SELL")) {
-                      icon = Icons.arrow_downward_rounded;
-                      color = const Color(0xFFFF4D4D);
-                    } else if (alert.message.contains("Break Even")) {
-                      icon = Icons.check_circle_outline_rounded;
-                      color = const Color(0xFF00E676);
-                    } else if (alert.message.contains("TP alcanzado")) {
-                      icon = Icons.track_changes_outlined;
-                      color = const Color(0xFF00E676);
-                    } else if (alert.message.contains("SL alcanzado")) {
-                      icon = Icons.cancel_outlined;
-                      color = const Color(0xFFFF4D4D);
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D131C),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.08),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(icon, color: color, size: 20),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  alert.message,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
-                                    height: 1.3,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  '${alert.timestamp.hour.toString().padLeft(2, '0')}:${alert.timestamp.minute.toString().padLeft(2, '0')}:${alert.timestamp.second.toString().padLeft(2, '0')}  •  '
-                                  '${alert.timestamp.day}/${alert.timestamp.month}/${alert.timestamp.year}',
-                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  // 4. Broker / API Configuration Screen
-  Widget _buildConfigScreen() {
-    final apiController = TextEditingController(text: _apiKey);
-    final secretController = TextEditingController(text: _apiSecret);
-    final serverController = TextEditingController(text: _brokerServer);
-    final accountController = TextEditingController(text: _accountNumber);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Configuración del Broker',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Configura tus llaves de API y el servidor del broker para enlazar y copiar automáticamente.',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-          ),
-          const SizedBox(height: 24),
-          
-          // API Key field
-          const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: apiController,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            decoration: _buildInputDecoration('Ingresar API Key', Icons.lock_open),
-          ),
-          const SizedBox(height: 16),
-          
-          // API Secret field with visibility toggle
-          const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: secretController,
-            obscureText: _obscureApiSecret,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            decoration: _buildInputDecoration(
-              'Ingresar Password/Secret',
-              Icons.lock_outline,
-              suffix: IconButton(
-                icon: Icon(
-                  _obscureApiSecret ? Icons.visibility_off : Icons.visibility,
-                  color: const Color(0xFF64748B),
-                  size: 20,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _obscureApiSecret = !_obscureApiSecret;
-                  });
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Trading Server dropdown-like input
-          const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: serverController,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            decoration: _buildInputDecoration(
-              'Ej. MetaQuotes-Demo',
-              Icons.dns_rounded,
-              suffix: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Account Number
-          const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: accountController,
-            keyboardType: TextInputType.number,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-            decoration: _buildInputDecoration('Ej. 8827394', Icons.person_outline),
-          ),
-          const SizedBox(height: 32),
-          
-          // Save Button (Premium Green Gradient with Checkmark)
-          Container(
-            width: double.infinity,
-            height: 52,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ElevatedButton(
-              onPressed: () {
-                _saveApiConfig(
-                  apiController.text,
-                  secretController.text,
-                  serverController.text,
-                  accountController.text,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title Row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(),
-                  const Text(
-                    'GUARDAR CONFIGURACIÓN',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      letterSpacing: 0.5,
-                      color: Colors.black,
-                    ),
+                children: const [
+                  Icon(Icons.notifications_active_outlined, color: Color(0xFF00E676), size: 22),
+                  SizedBox(width: 8),
+                  Text(
+                    'Alertas del Sistema',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.check, color: Color(0xFF00E676), size: 18),
-                  )
                 ],
               ),
             ),
+
+            // Horizontal filter pills
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Row(
+                children: ["Todas", "Operaciones", "Sistema", "Errores"].map((filter) {
+                  final isSelected = _selectedAlertFilter == filter;
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 4.0),
+                    child: ChoiceChip(
+                      label: Text(
+                        filter,
+                        style: TextStyle(
+                          color: isSelected ? Colors.black : Colors.white,
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: const Color(0xFF00E676),
+                      backgroundColor: const Color(0xFF0D131C),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: isSelected ? const Color(0xFF00E676) : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _selectedAlertFilter = filter;
+                          });
+                        }
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Alerts List
+            Expanded(
+              child: filteredAlerts.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No hay alertas en esta categoría.',
+                        style: TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: filteredAlerts.length,
+                      itemBuilder: (context, index) {
+                        final alert = filteredAlerts[index];
+                        IconData icon = Icons.info_outline;
+                        Color color = const Color(0xFF00E676);
+
+                        if (alert.message.contains("BUY")) {
+                          icon = Icons.arrow_upward_rounded;
+                          color = const Color(0xFF00E676);
+                        } else if (alert.message.contains("SELL")) {
+                          icon = Icons.arrow_downward_rounded;
+                          color = const Color(0xFFFF4D4D);
+                        } else if (alert.message.contains("Break Even")) {
+                          icon = Icons.check_circle_outline_rounded;
+                          color = const Color(0xFF00E676);
+                        } else if (alert.message.contains("TP alcanzado")) {
+                          icon = Icons.track_changes_outlined;
+                          color = const Color(0xFF00E676);
+                        } else if (alert.message.contains("SL alcanzado")) {
+                          icon = Icons.cancel_outlined;
+                          color = const Color(0xFFFF4D4D);
+                        }
+
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0D131C),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.08),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(icon, color: color, size: 20),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      alert.message,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '${alert.timestamp.hour.toString().padLeft(2, '0')}:${alert.timestamp.minute.toString().padLeft(2, '0')}:${alert.timestamp.second.toString().padLeft(2, '0')}  •  '
+                                      '${alert.timestamp.day}/${alert.timestamp.month}/${alert.timestamp.year}',
+                                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        );
+      }
+    ));
+  }
+
+  // --- CONFIG SCREEN (WITH BLOCKING FOR REGULAR USERS) ---
+  Widget _buildConfigScreen() {
+    return _runLockedPanelWrapper(Builder(
+      builder: (context) {
+        final apiController = TextEditingController(text: _apiKey);
+        final secretController = TextEditingController(text: _apiSecret);
+        final serverController = TextEditingController(text: _brokerServer);
+        final accountController = TextEditingController(text: _accountNumber);
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Configuración del Broker',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Configura tus llaves de API y el servidor del broker para enlazar y copiar automáticamente.',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              ),
+              const SizedBox(height: 24),
+              
+              // API Key field
+              const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: apiController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: _buildInputDecoration('Ingresar API Key', Icons.lock_open),
+              ),
+              const SizedBox(height: 16),
+              
+              // API Secret field with visibility toggle
+              const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: secretController,
+                obscureText: _obscureApiSecret,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: _buildInputDecoration(
+                  'Ingresar Password/Secret',
+                  Icons.lock_outline,
+                  suffix: IconButton(
+                    icon: Icon(
+                      _obscureApiSecret ? Icons.visibility_off : Icons.visibility,
+                      color: const Color(0xFF64748B),
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureApiSecret = !_obscureApiSecret;
+                      });
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Trading Server dropdown-like input
+              const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: serverController,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: _buildInputDecoration(
+                  'Ej. MetaQuotes-Demo',
+                  Icons.dns_rounded,
+                  suffix: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Account Number
+              const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: accountController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: _buildInputDecoration('Ej. 8827394', Icons.person_outline),
+              ),
+              const SizedBox(height: 32),
+              
+              // Save Button (Premium Green Gradient with Checkmark)
+              Container(
+                width: double.infinity,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: ElevatedButton(
+                  onPressed: () {
+                    _saveApiConfig(
+                      apiController.text,
+                      secretController.text,
+                      serverController.text,
+                      accountController.text,
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Spacer(),
+                      const Text(
+                        'GUARDAR CONFIGURACIÓN',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          letterSpacing: 0.5,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.black,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check, color: Color(0xFF00E676), size: 18),
+                      )
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        );
+      }
+    ));
   }
 
   InputDecoration _buildInputDecoration(String hint, IconData icon, {Widget? suffix}) {
