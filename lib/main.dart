@@ -181,6 +181,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final TextEditingController _brokerPasswordCtrl = TextEditingController();
   final TextEditingController _brokerServerCtrl = TextEditingController();
 
+  // Futures for Admin Panel to prevent reload flashing
+  Future<List<AppUser>>? _usersFuture;
+  Future<List<Map<String, dynamic>>>? _licensesFuture;
+
   // Supabase settings controllers
   final TextEditingController _supaUrlCtrl = TextEditingController();
   final TextEditingController _supaKeyCtrl = TextEditingController();
@@ -290,6 +294,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _brokerLoginCtrl.text = _brokerLogin;
     _brokerPasswordCtrl.text = _brokerPassword;
     _brokerServerCtrl.text = _brokerServer;
+
+    // Load persistent futures for admin
+    _usersFuture = _fetchRegisteredUsers();
+    _licensesFuture = _fetchSystemLicenses();
 
     // Load active signals seed
     _activeTrades = [
@@ -558,6 +566,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _currentUser!.licenseToken = cleanToken;
                 _currentUser!.licenseExpiry = DateTime.now().add(const Duration(days: 30));
                 
+                // Refresh admin list in background if needed
+                _usersFuture = _fetchRegisteredUsers();
+                _licensesFuture = _fetchSystemLicenses();
+                
                 _alerts.insert(
                   0,
                   TradeAlert(
@@ -625,6 +637,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         if (resp.statusCode == 201 || resp.statusCode == 200) {
           setState(() {
             _localLicenses.insert(0, token); // Mirror locally
+            _licensesFuture = _fetchSystemLicenses(); // Refresh futures
           });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -676,6 +689,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         );
 
         if (resp.statusCode == 201 || resp.statusCode == 200) {
+          setState(() {
+            _usersFuture = _fetchRegisteredUsers(); // Refresh futures
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Usuario "$username" registrado en la nube.'),
@@ -703,6 +719,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             role: "user",
             isLicenseActive: false,
           ));
+          _usersFuture = _fetchRegisteredUsers(); // Refresh local list
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Usuario "$username" creado localmente.')),
@@ -1304,14 +1321,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    '24 DÍAS',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 1.0,
-                    ),
+                  Builder(
+                    builder: (context) {
+                      if (_currentUser!.licenseExpiry == null) {
+                        return const Text(
+                          '30 DÍAS',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 1.0,
+                          ),
+                        );
+                      }
+                      final diff = _currentUser!.licenseExpiry!.difference(DateTime.now());
+                      final days = diff.inDays;
+                      final hours = diff.inHours % 24;
+                      String timeStr = "${days + 1} DÍAS";
+                      if (days == 0) {
+                        timeStr = "$hours HORAS";
+                      } else if (days < 0) {
+                        timeStr = "EXPIRADA";
+                      }
+                      return Text(
+                        timeStr,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 1.0,
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -1500,7 +1541,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(height: 12),
           
           FutureBuilder<List<AppUser>>(
-            future: _fetchRegisteredUsers(),
+            future: _usersFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
@@ -1638,7 +1679,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(height: 12),
           
           FutureBuilder<List<Map<String, dynamic>>>(
-            future: _fetchSystemLicenses(),
+            future: _licensesFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
