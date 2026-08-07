@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const TradingCopyApp());
@@ -901,11 +902,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Admin: admin | Pass: 12345678\nCliente: cliente | Pass: 12345678',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
-                ),
               ],
             ),
           ),
@@ -1405,53 +1401,66 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     
                     final isUsed = userUsing != null;
 
-                    return Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D131C),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.key, color: Color(0xFF00E676), size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  license,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13, letterSpacing: 0.5),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  isUsed ? 'Activada por: ${userUsing.name} (@${userUsing.username})' : 'Disponible para activación',
-                                  style: TextStyle(
-                                    color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
-                                    fontSize: 10.5,
-                                  ),
-                                ),
-                              ],
-                            ),
+                    return GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: license));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Licencia copiada al portapapeles: $license'),
+                            backgroundColor: const Color(0xFF00E676),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 1),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: isUsed ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFF64748B).withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              isUsed ? 'USADA' : 'LIBRE',
-                              style: TextStyle(
-                                color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
+                        );
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D131C),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.key, color: Color(0xFF00E676), size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    license,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13, letterSpacing: 0.5),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    isUsed ? 'Activada por: ${userUsing.name} (@${userUsing.username})' : 'Disponible para activación (Toca para copiar)',
+                                    style: TextStyle(
+                                      color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isUsed ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFF64748B).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isUsed ? 'USADA' : 'LIBRE',
+                                style: TextStyle(
+                                  color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
