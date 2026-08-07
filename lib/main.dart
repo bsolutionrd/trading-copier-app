@@ -158,11 +158,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   String _supabaseApiKey = "sb_publishable_eGnjukYwaG5YoLrPYwFP_w_QuAEpLkx";
 
   // Broker Config State
-  String _apiKey = "pk_live_51Nx...8hYt";
-  String _apiSecret = "••••••••••••";
-  String _brokerServer = "MetaQuotes-Demo";
-  String _accountNumber = "8827394";
-  bool _obscureApiSecret = true;
+  String _brokerLogin = "198762963";
+  String _brokerPassword = "•••••••••••••••";
+  String _brokerServer = "Exness-MT5Trial11";
+  bool _obscureBrokerPassword = true;
 
   // --- TEXT EDITING CONTROLLERS ---
   final TextEditingController _loginUserCtrl = TextEditingController();
@@ -178,10 +177,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final TextEditingController _licenseTokenCtrl = TextEditingController();
 
   // Broker configuration controllers
-  final TextEditingController _apiApiKeyCtrl = TextEditingController();
-  final TextEditingController _apiSecretCtrl = TextEditingController();
-  final TextEditingController _apiServerCtrl = TextEditingController();
-  final TextEditingController _apiAccountCtrl = TextEditingController();
+  final TextEditingController _brokerLoginCtrl = TextEditingController();
+  final TextEditingController _brokerPasswordCtrl = TextEditingController();
+  final TextEditingController _brokerServerCtrl = TextEditingController();
 
   // Supabase settings controllers
   final TextEditingController _supaUrlCtrl = TextEditingController();
@@ -289,12 +287,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     
     // Initialize config controllers text
-    _apiApiKeyCtrl.text = _apiKey;
-    _apiSecretCtrl.text = _apiSecret;
-    _apiServerCtrl.text = _brokerServer;
-    _apiAccountCtrl.text = _accountNumber;
-    _supaUrlCtrl.text = _supabaseUrl;
-    _supaKeyCtrl.text = _supabaseApiKey;
+    _brokerLoginCtrl.text = _brokerLogin;
+    _brokerPasswordCtrl.text = _brokerPassword;
+    _brokerServerCtrl.text = _brokerServer;
 
     // Load active signals seed
     _activeTrades = [
@@ -347,12 +342,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _adminUserCtrl.dispose();
     _adminPassCtrl.dispose();
     _licenseTokenCtrl.dispose();
-    _apiApiKeyCtrl.dispose();
-    _apiSecretCtrl.dispose();
-    _apiServerCtrl.dispose();
-    _apiAccountCtrl.dispose();
-    _supaUrlCtrl.dispose();
-    _supaKeyCtrl.dispose();
+    _brokerLoginCtrl.dispose();
+    _brokerPasswordCtrl.dispose();
+    _brokerServerCtrl.dispose();
     
     super.dispose();
   }
@@ -1088,17 +1080,16 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return panel;
   }
 
-  // --- SAVE API CONFIG ---
-  void _saveApiConfig(String apiKey, String secret, String server, String acc) {
+  // --- SAVE BROKER CONFIG ---
+  void _saveBrokerConfig(String login, String password, String server) {
     setState(() {
-      _apiKey = apiKey;
-      _apiSecret = secret;
+      _brokerLogin = login;
+      _brokerPassword = password;
       _brokerServer = server;
-      _accountNumber = acc;
       _alerts.insert(
         0,
         TradeAlert(
-          message: "Credenciales de API y Servidor de Broker actualizados.",
+          message: "Credenciales de Broker actualizadas para la cuenta $_brokerLogin.",
           category: "Sistema",
           type: "success",
           timestamp: DateTime.now(),
@@ -1107,7 +1098,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Configuración guardada correctamente'),
+        content: Text('Configuración del Broker guardada correctamente'),
         backgroundColor: Color(0xFF00E676),
         behavior: SnackBarBehavior.floating,
       ),
@@ -1767,7 +1758,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'MT4 Account: $_accountNumber',
+                        'MT4 Account: $_brokerLogin',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -2337,7 +2328,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // BROKER / MT4 CONFIGURATION
               const Text(
                 'Configuración del Broker',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
@@ -2349,33 +2339,33 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               const SizedBox(height: 16),
               
-              const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+              const Text('Login / Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: _apiApiKeyCtrl,
+                controller: _brokerLoginCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _buildInputDecoration('Ingresar API Key', Icons.lock_open),
+                decoration: _buildInputDecoration('Ingresar número de cuenta o Login', Icons.person_outline),
               ),
               const SizedBox(height: 12),
               
-              const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+              const Text('Contraseña', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: _apiSecretCtrl,
-                obscureText: _obscureApiSecret,
+                controller: _brokerPasswordCtrl,
+                obscureText: _obscureBrokerPassword,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration(
-                  'Ingresar Password/Secret',
+                  'Ingresar contraseña de trading',
                   Icons.lock_outline,
                   suffix: IconButton(
                     icon: Icon(
-                      _obscureApiSecret ? Icons.visibility_off : Icons.visibility,
+                      _obscureBrokerPassword ? Icons.visibility_off : Icons.visibility,
                       color: const Color(0xFF64748B),
                       size: 18,
                     ),
                     onPressed: () {
                       setState(() {
-                        _obscureApiSecret = !_obscureApiSecret;
+                        _obscureBrokerPassword = !_obscureBrokerPassword;
                       });
                     },
                   ),
@@ -2383,26 +2373,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
               const SizedBox(height: 12),
               
-              const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+              const Text('Servidor del Broker (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: _apiServerCtrl,
+                controller: _brokerServerCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration(
-                  'Ej. MetaQuotes-Demo',
+                  'Ej. Exness-MT5Trial11 o MetaQuotes-Demo',
                   Icons.dns_rounded,
-                  suffix: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
                 ),
-              ),
-              const SizedBox(height: 12),
-              
-              const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _apiAccountCtrl,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: _buildInputDecoration('Ej. 8827394', Icons.person_outline),
               ),
               const SizedBox(height: 24),
               
@@ -2419,11 +2398,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
                 child: ElevatedButton(
                   onPressed: () {
-                    _saveApiConfig(
-                      _apiApiKeyCtrl.text,
-                      _apiSecretCtrl.text,
-                      _apiServerCtrl.text,
-                      _apiAccountCtrl.text,
+                    _saveBrokerConfig(
+                      _brokerLoginCtrl.text,
+                      _brokerPasswordCtrl.text,
+                      _brokerServerCtrl.text,
                     );
                   },
                   style: ElevatedButton.styleFrom(
