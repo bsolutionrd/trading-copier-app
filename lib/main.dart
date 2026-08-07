@@ -133,8 +133,25 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // Authentication State
   AppUser? _currentUser;
+  
+  // --- PERSISTENT TEXT EDITING CONTROLLERS (FIXES TEXT ERASING BUG) ---
   final TextEditingController _loginUserCtrl = TextEditingController();
   final TextEditingController _loginPassCtrl = TextEditingController();
+  
+  // Admin panel controllers
+  final TextEditingController _adminNameCtrl = TextEditingController();
+  final TextEditingController _adminEmailCtrl = TextEditingController();
+  final TextEditingController _adminUserCtrl = TextEditingController();
+  final TextEditingController _adminPassCtrl = TextEditingController();
+  
+  // User license screen controller
+  final TextEditingController _licenseTokenCtrl = TextEditingController();
+
+  // Broker configuration controllers
+  final TextEditingController _apiApiKeyCtrl = TextEditingController();
+  final TextEditingController _apiSecretCtrl = TextEditingController();
+  final TextEditingController _apiServerCtrl = TextEditingController();
+  final TextEditingController _apiAccountCtrl = TextEditingController();
 
   // Simulated Database of Users
   final List<AppUser> _usersList = [
@@ -306,6 +323,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Initialize config controllers text
+    _apiApiKeyCtrl.text = _apiKey;
+    _apiSecretCtrl.text = _apiSecret;
+    _apiServerCtrl.text = _brokerServer;
+    _apiAccountCtrl.text = _accountNumber;
+
     // Simulate real-time PnL / Price fluctuations & update sparklines
     _priceUpdateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted) return;
@@ -337,8 +361,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   void dispose() {
     _priceUpdateTimer?.cancel();
+    
+    // Dispose all controllers
     _loginUserCtrl.dispose();
     _loginPassCtrl.dispose();
+    _adminNameCtrl.dispose();
+    _adminEmailCtrl.dispose();
+    _adminUserCtrl.dispose();
+    _adminPassCtrl.dispose();
+    _licenseTokenCtrl.dispose();
+    _apiApiKeyCtrl.dispose();
+    _apiSecretCtrl.dispose();
+    _apiServerCtrl.dispose();
+    _apiAccountCtrl.dispose();
+    
     super.dispose();
   }
 
@@ -409,6 +445,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         );
       });
+      _licenseTokenCtrl.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Licencia activada con éxito para ${_currentUser!.name}'),
@@ -516,6 +553,96 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  // --- USER DETAILS DIALOG (POPUP DETAILS WINDOW ON LIST CLICK) ---
+  void _showUserDetailsDialog(AppUser user) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final hasActive = user.role == 'admin' || user.isLicenseActive;
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0D131C),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFF1E293B), width: 1.2),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
+                color: const Color(0xFF00E676),
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Detalles de Usuario',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+              ),
+            ],
+          ),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Nombre', user.name),
+              _buildDetailRow('Correo', user.email),
+              _buildDetailRow('Usuario', '@${user.username}'),
+              _buildDetailRow('Contraseña', user.password),
+              _buildDetailRow('Rol', user.role == 'admin' ? 'Administrador' : 'Usuario Regular'),
+              const Divider(color: Color(0xFF1E293B), height: 24),
+              _buildDetailRow(
+                'Estado Licencia',
+                user.role == 'admin'
+                    ? 'No requiere (Admin)'
+                    : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
+                valueColor: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+              ),
+              if (user.role != 'admin' && user.isLicenseActive) ...[
+                const SizedBox(height: 6),
+                _buildDetailRow('Token Licencia', user.licenseToken ?? 'N/A'),
+                _buildDetailRow(
+                  'Expiración',
+                  user.licenseExpiry != null
+                      ? '${user.licenseExpiry!.day}/${user.licenseExpiry!.month}/${user.licenseExpiry!.year}'
+                      : 'N/A',
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'CERRAR',
+                style: TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: valueColor ?? Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- UI SCREENS BUILDERS ---
 
   @override
@@ -525,10 +652,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return _buildLoginScreen();
     }
 
-    // Dynamic Navigation items and screens based on role
     final isAdmin = _currentUser!.role == 'admin';
 
-    // Admin Navigation Panels
     final List<Widget> adminScreens = [
       _buildAdminPanelScreen(),
       _buildAdminLicensesScreen(),
@@ -536,7 +661,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       _buildConfigScreen(),
     ];
 
-    // User Navigation Panels
     final List<Widget> userScreens = [
       _buildLicenseScreen(),
       _buildDashboardScreen(),
@@ -583,7 +707,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         backgroundColor: const Color(0xFF060B0E),
         elevation: 0,
         actions: [
-          // Expirar sesión button
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Color(0xFF64748B), size: 20),
             onPressed: _logout,
@@ -696,11 +819,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo de Mira
                 const Icon(Icons.gps_fixed, color: Color(0xFF00E676), size: 72),
                 const SizedBox(height: 16),
-                
-                // Sniper Money EA Branding text
                 const Text(
                   'SNIPER',
                   style: TextStyle(
@@ -720,8 +840,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
                 const SizedBox(height: 48),
-                
-                // Login Form
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -738,16 +856,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                
-                // Username field
                 TextField(
                   controller: _loginUserCtrl,
                   style: const TextStyle(color: Colors.white, fontSize: 14),
                   decoration: _buildInputDecoration('Nombre de usuario', Icons.person_outline),
                 ),
                 const SizedBox(height: 16),
-                
-                // Password field
                 TextField(
                   controller: _loginPassCtrl,
                   obscureText: true,
@@ -755,8 +869,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
                 ),
                 const SizedBox(height: 32),
-                
-                // Login Button
                 Container(
                   width: double.infinity,
                   height: 52,
@@ -788,10 +900,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                   ),
                 ),
-                
                 const SizedBox(height: 20),
                 const Text(
-                  'Admin temporal: admin | Pass: 12345678',
+                  'Admin: admin | Pass: 12345678\nCliente: cliente | Pass: 12345678',
+                  textAlign: TextAlign.center,
                   style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
                 ),
               ],
@@ -802,9 +914,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- USER PANELS & LOCK LOGIC ---
-
-  // Checks if user is locked out from a tab
+  // --- LOCK METHOD FOR REGULAR USERS ---
   Widget _runLockedPanelWrapper(Widget panel) {
     final isLocked = _currentUser!.role == 'user' && !_currentUser!.isLicenseActive;
     if (isLocked) {
@@ -853,10 +963,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return panel;
   }
 
-  // License Activation Panel for Users
+  // License Screen
   Widget _buildLicenseScreen() {
-    final tokenController = TextEditingController();
-
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
       child: Column(
@@ -872,8 +980,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
           ),
           const SizedBox(height: 20),
-          
-          // License Status Card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -932,10 +1038,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ],
             ),
           ),
-          
           if (_currentUser!.isLicenseActive) ...[
             const SizedBox(height: 20),
-            // Remaining Time Card
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
@@ -970,17 +1074,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
             ),
           ],
-          
           const SizedBox(height: 24),
           const Text(
             'Ingresar Token de Licencia',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
           ),
           const SizedBox(height: 10),
-          
-          // Token input field
           TextField(
-            controller: tokenController,
+            controller: _licenseTokenCtrl,
             style: const TextStyle(color: Colors.white, fontSize: 14),
             decoration: InputDecoration(
               fillColor: const Color(0xFF0D131C),
@@ -1005,8 +1106,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          
-          // Validation Button (Premium Green Gradient)
           Container(
             width: double.infinity,
             height: 52,
@@ -1019,7 +1118,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: ElevatedButton(
-              onPressed: () => _verifyLicense(tokenController.text),
+              onPressed: () => _verifyLicense(_licenseTokenCtrl.text),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 shadowColor: Colors.transparent,
@@ -1062,11 +1161,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   // Admin Panel 1: Create and View Users
   Widget _buildAdminPanelScreen() {
-    final nameCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final userCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
       child: Column(
@@ -1098,28 +1192,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 const SizedBox(height: 16),
                 
                 TextField(
-                  controller: nameCtrl,
+                  controller: _adminNameCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Nombre Completo', Icons.person_outline),
                 ),
                 const SizedBox(height: 12),
                 
                 TextField(
-                  controller: emailCtrl,
+                  controller: _adminEmailCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Correo Electrónico', Icons.email_outlined),
                 ),
                 const SizedBox(height: 12),
                 
                 TextField(
-                  controller: userCtrl,
+                  controller: _adminUserCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Nombre de Usuario', Icons.alternate_email),
                 ),
                 const SizedBox(height: 12),
                 
                 TextField(
-                  controller: passCtrl,
+                  controller: _adminPassCtrl,
                   obscureText: true,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
@@ -1132,15 +1226,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       _createNewUser(
-                        nameCtrl.text.trim(),
-                        emailCtrl.text.trim(),
-                        userCtrl.text.trim(),
-                        passCtrl.text,
+                        _adminNameCtrl.text.trim(),
+                        _adminEmailCtrl.text.trim(),
+                        _adminUserCtrl.text.trim(),
+                        _adminPassCtrl.text,
                       );
-                      nameCtrl.clear();
-                      emailCtrl.clear();
-                      userCtrl.clear();
-                      passCtrl.clear();
+                      _adminNameCtrl.clear();
+                      _adminEmailCtrl.clear();
+                      _adminUserCtrl.clear();
+                      _adminPassCtrl.clear();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF00E676),
@@ -1158,6 +1252,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           
           const SizedBox(height: 24),
           const Text('Usuarios Registrados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+          const SizedBox(height: 4),
+          const Text('Toca un usuario para ver detalles', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
           const SizedBox(height: 12),
           
           // User List in DB
@@ -1168,50 +1264,53 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             itemBuilder: (context, index) {
               final user = _usersList[index];
               final hasActive = user.role == 'admin' || user.isLicenseActive;
-              return Container(
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D131C),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: hasActive ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFFFF4D4D).withOpacity(0.12),
-                      child: Icon(
-                        user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
-                        color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
-                          const SizedBox(height: 2),
-                          Text('@${user.username} • ${user.email}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: hasActive ? const Color(0xFF00E676).withOpacity(0.15) : const Color(0xFFFF4D4D).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        user.role == 'admin' ? 'ADMIN' : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
-                        style: TextStyle(
+              return GestureDetector(
+                onTap: () => _showUserDetailsDialog(user),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D131C),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: hasActive ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFFFF4D4D).withOpacity(0.12),
+                        child: Icon(
+                          user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
                           color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text('@${user.username} • ${user.email}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: hasActive ? const Color(0xFF00E676).withOpacity(0.15) : const Color(0xFFFF4D4D).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          user.role == 'admin' ? 'ADMIN' : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
+                          style: TextStyle(
+                            color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -1238,8 +1337,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
           ),
           const SizedBox(height: 20),
-          
-          // Validation Button (Premium Green Gradient)
           Container(
             width: double.infinity,
             height: 52,
@@ -1286,11 +1383,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
             ),
           ),
-          
           const SizedBox(height: 28),
           const Text('Licencias Activas en el Sistema', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
           const SizedBox(height: 12),
-          
           _generatedLicenses.isEmpty
               ? const Center(child: Text('No hay licencias generadas aún.', style: TextStyle(color: Color(0xFF64748B))))
               : ListView.builder(
@@ -1300,7 +1395,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   itemBuilder: (context, index) {
                     final license = _generatedLicenses[index];
                     
-                    // Check if anyone is using it
                     AppUser? userUsing;
                     for (var u in _usersList) {
                       if (u.licenseToken == license) {
@@ -1367,11 +1461,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- OPERATIONS DASHBOARD (WITH BLOCKING FOR REGULAR USERS) ---
+  // --- OPERATIONS DASHBOARD ---
   Widget _buildDashboardScreen() {
     return _runLockedPanelWrapper(Column(
       children: [
-        // Connected Account Header Card
         Container(
           width: double.infinity,
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -1493,8 +1586,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
         ),
-
-        // Sliding Toggle (Active vs. Closed Trades)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
           child: Container(
@@ -1551,8 +1642,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
         const SizedBox(height: 10),
-
-        // Section Title Header
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
           child: Row(
@@ -1599,8 +1688,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
         ),
-
-        // Trades List
         Expanded(
           child: _showActiveTrades
               ? _buildActiveTradesList()
@@ -1664,8 +1751,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                   ),
                   const Spacer(),
-                  
-                  // Sparkline Widget
                   SizedBox(
                     width: 55,
                     height: 24,
@@ -1679,7 +1764,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  
                   Text(
                     '${trade.pnl >= 0 ? '+' : ''}\$${trade.pnl.toStringAsFixed(2)}',
                     style: TextStyle(
@@ -1821,7 +1905,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- ALERTS SCREEN (WITH BLOCKING FOR REGULAR USERS) ---
+  // --- ALERTS SCREEN ---
   Widget _buildAlertsScreen() {
     return _runLockedPanelWrapper(Builder(
       builder: (context) {
@@ -1832,7 +1916,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title Row
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
               child: Row(
@@ -1846,8 +1929,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ],
               ),
             ),
-
-            // Horizontal filter pills
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -1887,8 +1968,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ),
             ),
             const SizedBox(height: 12),
-
-            // Alerts List
             Expanded(
               child: filteredAlerts.isEmpty
                   ? const Center(
@@ -1976,15 +2055,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ));
   }
 
-  // --- CONFIG SCREEN (WITH BLOCKING FOR REGULAR USERS) ---
+  // --- CONFIG SCREEN ---
   Widget _buildConfigScreen() {
     return _runLockedPanelWrapper(Builder(
       builder: (context) {
-        final apiController = TextEditingController(text: _apiKey);
-        final secretController = TextEditingController(text: _apiSecret);
-        final serverController = TextEditingController(text: _brokerServer);
-        final accountController = TextEditingController(text: _accountNumber);
-
         return SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
           child: Column(
@@ -2000,22 +2074,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
               ),
               const SizedBox(height: 24),
-              
-              // API Key field
               const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: apiController,
+                controller: _apiApiKeyCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: _buildInputDecoration('Ingresar API Key', Icons.lock_open),
               ),
               const SizedBox(height: 16),
-              
-              // API Secret field with visibility toggle
               const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: secretController,
+                controller: _apiSecretCtrl,
                 obscureText: _obscureApiSecret,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: _buildInputDecoration(
@@ -2036,12 +2106,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // Trading Server dropdown-like input
               const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: serverController,
+                controller: _apiServerCtrl,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: _buildInputDecoration(
                   'Ej. MetaQuotes-Demo',
@@ -2050,19 +2118,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // Account Number
               const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
-                controller: accountController,
+                controller: _apiAccountCtrl,
                 keyboardType: TextInputType.number,
                 style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: _buildInputDecoration('Ej. 8827394', Icons.person_outline),
               ),
               const SizedBox(height: 32),
-              
-              // Save Button (Premium Green Gradient with Checkmark)
               Container(
                 width: double.infinity,
                 height: 52,
@@ -2077,10 +2141,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 child: ElevatedButton(
                   onPressed: () {
                     _saveApiConfig(
-                      apiController.text,
-                      secretController.text,
-                      serverController.text,
-                      accountController.text,
+                      _apiApiKeyCtrl.text,
+                      _apiSecretCtrl.text,
+                      _apiServerCtrl.text,
+                      _apiAccountCtrl.text,
                     );
                   },
                   style: ElevatedButton.styleFrom(
