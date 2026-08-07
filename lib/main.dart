@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const TradingCopyApp());
@@ -60,6 +62,21 @@ class AppUser {
     this.isLicenseActive = false,
     this.licenseExpiry,
   });
+
+  factory AppUser.fromJson(Map<String, dynamic> json) {
+    return AppUser(
+      name: json['name'] ?? '',
+      email: json['email'] ?? '',
+      username: json['username'] ?? '',
+      password: json['password'] ?? '',
+      role: json['role'] ?? 'user',
+      licenseToken: json['license_token'],
+      isLicenseActive: json['is_license_active'] ?? false,
+      licenseExpiry: json['license_expiry'] != null
+          ? DateTime.tryParse(json['license_expiry'])
+          : null,
+    );
+  }
 }
 
 class TradeSignal {
@@ -134,8 +151,20 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // Authentication State
   AppUser? _currentUser;
-  
-  // --- PERSISTENT TEXT EDITING CONTROLLERS (FIXES TEXT ERASING BUG) ---
+  bool _isLoading = false;
+
+  // Supabase Configuration State
+  String _supabaseUrl = "https://tu-proyecto.supabase.co";
+  String _supabaseApiKey = "TU_SUPABASE_ANON_KEY_AQUI";
+
+  // Broker Config State
+  String _apiKey = "pk_live_51Nx...8hYt";
+  String _apiSecret = "••••••••••••";
+  String _brokerServer = "MetaQuotes-Demo";
+  String _accountNumber = "8827394";
+  bool _obscureApiSecret = true;
+
+  // --- TEXT EDITING CONTROLLERS ---
   final TextEditingController _loginUserCtrl = TextEditingController();
   final TextEditingController _loginPassCtrl = TextEditingController();
   
@@ -154,8 +183,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final TextEditingController _apiServerCtrl = TextEditingController();
   final TextEditingController _apiAccountCtrl = TextEditingController();
 
-  // Simulated Database of Users
-  final List<AppUser> _usersList = [
+  // Supabase settings controllers
+  final TextEditingController _supaUrlCtrl = TextEditingController();
+  final TextEditingController _supaKeyCtrl = TextEditingController();
+
+  // --- LOCAL SIMULATED DATABASE (FALLBACK MODE) ---
+  final List<AppUser> _localUsers = [
     AppUser(
       name: "Administrador",
       email: "admin@sniper.com",
@@ -174,8 +207,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ),
   ];
 
-  // Global Generated Licenses list
-  final List<String> _generatedLicenses = [
+  final List<String> _localLicenses = [
     "SNIPER-88A9-99B2-X1",
     "SNIPER-44C1-22E4-F7",
   ];
@@ -189,58 +221,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   // Account State
   double _accountBalance = 10450.25;
   double _floatingPnl = 229.44;
-  String _accountNumber = "8827394";
-
-  // API Config State
-  String _apiKey = "pk_live_51Nx...8hYt";
-  String _apiSecret = "••••••••••••";
-  String _brokerServer = "MetaQuotes-Demo";
-  bool _obscureApiSecret = true;
 
   // Horizontal Filter Category for Alerts
   String _selectedAlertFilter = "Todas";
 
   // Simulated Trades Data
-  final List<TradeSignal> _activeTrades = [
-    TradeSignal(
-      id: "1",
-      symbol: "EURUSD",
-      type: "BUY",
-      entryPrice: 1.08540,
-      currentPrice: 1.08673,
-      sl: 1.08100,
-      tp: 1.09200,
-      pnl: 13.34,
-      time: DateTime.now().subtract(const Duration(minutes: 45)),
-      priceHistory: [1.0854, 1.0857, 1.0852, 1.0861, 1.0865, 1.0862, 1.0867],
-    ),
-    TradeSignal(
-      id: "2",
-      symbol: "GBPUSD",
-      type: "SELL",
-      entryPrice: 1.26420,
-      currentPrice: 1.26400,
-      sl: 1.26900,
-      tp: 1.25500,
-      pnl: 1.97,
-      time: DateTime.now().subtract(const Duration(minutes: 12)),
-      priceHistory: [1.2642, 1.2645, 1.2648, 1.2644, 1.2641, 1.2643, 1.2640],
-    ),
-    TradeSignal(
-      id: "3",
-      symbol: "XAUUSD",
-      type: "BUY",
-      entryPrice: 2034.50,
-      currentPrice: 2036.64,
-      sl: 2025.00,
-      tp: 2050.00,
-      pnl: 214.14,
-      time: DateTime.now().subtract(const Duration(minutes: 3)),
-      priceHistory: [2034.5, 2034.2, 2035.1, 2034.9, 2035.8, 2036.2, 2036.64],
-    ),
-  ];
-
-  // Simulated Closed Trades Data
+  List<TradeSignal> _activeTrades = [];
   final List<ClosedTrade> _closedTrades = [
     ClosedTrade(
       symbol: "BTCUSD",
@@ -262,26 +248,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       pnl: -85.00,
       closeTime: DateTime.now().subtract(const Duration(hours: 5)),
     ),
-    ClosedTrade(
-      symbol: "EURUSD",
-      type: "SELL",
-      entryPrice: 1.08720,
-      closePrice: 1.08610,
-      sl: 1.09100,
-      tp: 1.08500,
-      pnl: 110.00,
-      closeTime: DateTime.now().subtract(const Duration(days: 1)),
-    ),
-    ClosedTrade(
-      symbol: "GBPUSD",
-      type: "BUY",
-      entryPrice: 1.26100,
-      closePrice: 1.25950,
-      sl: 1.25950,
-      tp: 1.26700,
-      pnl: -45.00,
-      closeTime: DateTime.now().subtract(const Duration(days: 1, hours: 3)),
-    ),
   ];
 
   // Simulated Alerts Data
@@ -298,28 +264,25 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       type: "info",
       timestamp: DateTime.now().subtract(const Duration(minutes: 12)),
     ),
-    TradeAlert(
-      message: "Orden EURUSD movida a Break Even (+0.5 pips)",
-      category: "Sistema",
-      type: "success",
-      timestamp: DateTime.now().subtract(const Duration(minutes: 25)),
-    ),
-    TradeAlert(
-      message: "TP alcanzado en BTCUSD\n(+240.00 USD)",
-      category: "Sistema",
-      type: "success",
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-    ),
-    TradeAlert(
-      message: "SL alcanzado en USDJPY\n(-85.00 USD)",
-      category: "Errores",
-      type: "danger",
-      timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-    ),
   ];
 
   Timer? _priceUpdateTimer;
   final Random _random = Random();
+
+  // --- SUPABASE CONTEXT ACCESSORS ---
+  bool get _isSupabaseConfigured {
+    return _supabaseUrl.isNotEmpty && 
+           !_supabaseUrl.contains("tu-proyecto.supabase.co") && 
+           _supabaseApiKey.isNotEmpty && 
+           !_supabaseApiKey.contains("ANON_KEY");
+  }
+
+  Map<String, String> get _supabaseHeaders => {
+    "apikey": _supabaseApiKey,
+    "Authorization": "Bearer $_supabaseApiKey",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+  };
 
   @override
   void initState() {
@@ -330,32 +293,45 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _apiSecretCtrl.text = _apiSecret;
     _apiServerCtrl.text = _brokerServer;
     _apiAccountCtrl.text = _accountNumber;
+    _supaUrlCtrl.text = _supabaseUrl;
+    _supaKeyCtrl.text = _supabaseApiKey;
 
-    // Simulate real-time PnL / Price fluctuations & update sparklines
+    // Load active signals seed
+    _activeTrades = [
+      TradeSignal(
+        id: "1",
+        symbol: "EURUSD",
+        type: "BUY",
+        entryPrice: 1.08540,
+        currentPrice: 1.08673,
+        sl: 1.08100,
+        tp: 1.09200,
+        pnl: 13.34,
+        time: DateTime.now().subtract(const Duration(minutes: 45)),
+        priceHistory: [1.0854, 1.0857, 1.0852, 1.0861, 1.0865, 1.0862, 1.0867],
+      ),
+      TradeSignal(
+        id: "2",
+        symbol: "GBPUSD",
+        type: "SELL",
+        entryPrice: 1.26420,
+        currentPrice: 1.26400,
+        sl: 1.26900,
+        tp: 1.25500,
+        pnl: 1.97,
+        time: DateTime.now().subtract(const Duration(minutes: 12)),
+        priceHistory: [1.2642, 1.2645, 1.2648, 1.2644, 1.2641, 1.2643, 1.2640],
+      )
+    ];
+
+    // Periodic task (Syncs from Supabase Cloud or Fluctuates locally)
     _priceUpdateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (!mounted) return;
-      setState(() {
-        double newFloatingPnl = 0.0;
-        for (var trade in _activeTrades) {
-          double change = (_random.nextDouble() - 0.49) * (trade.symbol == "XAUUSD" ? 0.35 : 0.00008);
-          trade.currentPrice += change;
-          
-          // Re-calculate PnL
-          if (trade.type == "BUY") {
-            trade.pnl = (trade.currentPrice - trade.entryPrice) * (trade.symbol == "XAUUSD" ? 100 : 10000);
-          } else {
-            trade.pnl = (trade.entryPrice - trade.currentPrice) * (trade.symbol == "XAUUSD" ? 100 : 10000);
-          }
-          newFloatingPnl += trade.pnl;
-
-          // Append to history for sparkline
-          trade.priceHistory.add(trade.currentPrice);
-          if (trade.priceHistory.length > 10) {
-            trade.priceHistory.removeAt(0);
-          }
-        }
-        _floatingPnl = newFloatingPnl;
-      });
+      if (_isSupabaseConfigured && _currentUser != null) {
+        _syncActiveTradesFromSupabase();
+      } else {
+        _simulateLocalMarketFluctuations();
+      }
     });
   }
 
@@ -363,7 +339,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void dispose() {
     _priceUpdateTimer?.cancel();
     
-    // Dispose all controllers
+    // Dispose controllers
     _loginUserCtrl.dispose();
     _loginPassCtrl.dispose();
     _adminNameCtrl.dispose();
@@ -375,48 +351,169 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _apiSecretCtrl.dispose();
     _apiServerCtrl.dispose();
     _apiAccountCtrl.dispose();
+    _supaUrlCtrl.dispose();
+    _supaKeyCtrl.dispose();
     
     super.dispose();
   }
 
-  // --- BUSINESS LOGIC ACTIONS ---
+  // --- CLOUD SYNC METHOD (GET ACTIVE TRADES FROM MASTER EA) ---
+  Future<void> _syncActiveTradesFromSupabase() async {
+    try {
+      final response = await http.get(
+        Uri.parse("$_supabaseUrl/rest/v1/master_signals?select=*"),
+        headers: _supabaseHeaders,
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        
+        List<TradeSignal> fetchedSignals = [];
+        double newFloatingPnl = 0.0;
+        
+        for (var item in data) {
+          final ticket = item['ticket'].toString();
+          final symbol = item['symbol'] ?? 'EURUSD';
+          final type = item['type'] == 1 ? 'SELL' : 'BUY';
+          final double entry = (item['open_price'] ?? 0.0).toDouble();
+          final double lots = (item['lots'] ?? 0.1).toDouble();
+          final double mBalance = (item['master_balance'] ?? 0.0).toDouble();
+          
+          // Set simulated fluctuating current price
+          double current = entry + (_random.nextDouble() - 0.49) * (symbol == "XAUUSD" ? 0.2 : 0.00005);
+          double pnl = 0.0;
+          if (type == "BUY") {
+            pnl = (current - entry) * (symbol == "XAUUSD" ? 100 : 10000) * lots * 10;
+          } else {
+            pnl = (entry - current) * (symbol == "XAUUSD" ? 100 : 10000) * lots * 10;
+          }
+          
+          newFloatingPnl += pnl;
 
-  void _login() {
+          fetchedSignals.add(TradeSignal(
+            id: ticket,
+            symbol: symbol,
+            type: type,
+            entryPrice: entry,
+            currentPrice: current,
+            sl: entry - (type == "BUY" ? 0.00300 : -0.00300),
+            tp: entry + (type == "BUY" ? 0.00600 : -0.00600),
+            pnl: pnl,
+            time: DateTime.now(),
+            priceHistory: [entry, current],
+          ));
+        }
+
+        setState(() {
+          _activeTrades = fetchedSignals;
+          _floatingPnl = newFloatingPnl;
+          if (data.isNotEmpty) {
+            _accountBalance = (data.first['master_balance'] ?? 10450.25).toDouble() + newFloatingPnl;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Error syncing active trades: $e");
+    }
+  }
+
+  void _simulateLocalMarketFluctuations() {
+    setState(() {
+      double newFloatingPnl = 0.0;
+      for (var trade in _activeTrades) {
+        double change = (_random.nextDouble() - 0.49) * (trade.symbol == "XAUUSD" ? 0.35 : 0.00008);
+        trade.currentPrice += change;
+        
+        if (trade.type == "BUY") {
+          trade.pnl = (trade.currentPrice - trade.entryPrice) * (trade.symbol == "XAUUSD" ? 100 : 10000);
+        } else {
+          trade.pnl = (trade.entryPrice - trade.currentPrice) * (trade.symbol == "XAUUSD" ? 100 : 10000);
+        }
+        newFloatingPnl += trade.pnl;
+
+        trade.priceHistory.add(trade.currentPrice);
+        if (trade.priceHistory.length > 10) {
+          trade.priceHistory.removeAt(0);
+        }
+      }
+      _floatingPnl = newFloatingPnl;
+    });
+  }
+
+  // --- CLOUD AUTHENTICATION ---
+  Future<void> _login() async {
     final usernameInput = _loginUserCtrl.text.trim();
     final passwordInput = _loginPassCtrl.text;
 
-    AppUser? foundUser;
-    for (var user in _usersList) {
-      if (user.username.toLowerCase() == usernameInput.toLowerCase() &&
-          user.password == passwordInput) {
-        foundUser = user;
-        break;
+    if (usernameInput.isEmpty || passwordInput.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rellene todos los campos')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    if (_isSupabaseConfigured) {
+      try {
+        final url = Uri.parse("$_supabaseUrl/rest/v1/profiles?username=eq.$usernameInput&password=eq.$passwordInput&select=*");
+        final response = await http.get(url, headers: _supabaseHeaders);
+        
+        if (response.statusCode == 200) {
+          final List<dynamic> users = jsonDecode(response.body);
+          if (users.isNotEmpty) {
+            final appUser = AppUser.fromJson(users.first);
+            setState(() {
+              _currentUser = appUser;
+              _currentIndex = 0;
+              _loginUserCtrl.clear();
+              _loginPassCtrl.clear();
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Sesión iniciada en Supabase: ${appUser.name}'),
+                backgroundColor: const Color(0xFF00E676),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          } else {
+            _showErrorSnackBar("Usuario o contraseña incorrectos");
+          }
+        } else {
+          _showErrorSnackBar("Error en servidor Supabase (Cod: ${response.statusCode})");
+        }
+      } catch (e) {
+        _showErrorSnackBar("Error de conexión: $e");
+      }
+    } else {
+      // Local fallback
+      AppUser? foundUser;
+      for (var user in _localUsers) {
+        if (user.username.toLowerCase() == usernameInput.toLowerCase() &&
+            user.password == passwordInput) {
+          foundUser = user;
+          break;
+        }
+      }
+      if (foundUser != null) {
+        setState(() {
+          _currentUser = foundUser;
+          _currentIndex = 0;
+          _loginUserCtrl.clear();
+          _loginPassCtrl.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sesión iniciada (Demo): ${foundUser.name}'),
+            backgroundColor: const Color(0xFF00E676),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        _showErrorSnackBar("Usuario o contraseña incorrectos");
       }
     }
 
-    if (foundUser != null) {
-      setState(() {
-        _currentUser = foundUser;
-        _currentIndex = 0;
-        _loginUserCtrl.clear();
-        _loginPassCtrl.clear();
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Sesión iniciada como: ${foundUser.name}'),
-          backgroundColor: const Color(0xFF00E676),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Usuario o contraseña incorrectos'),
-          backgroundColor: Color(0xFFFF4D4D),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    setState(() => _isLoading = false);
   }
 
   void _logout() {
@@ -426,229 +523,258 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
-  void _verifyLicense(String token) {
+  // --- LICENSE MANAGEMENT (VERIFY / GENERATE) ---
+  Future<void> _verifyLicense(String token) async {
     if (_currentUser == null) return;
-    
-    // Check if the token is in the list of generated licenses
-    if (_generatedLicenses.contains(token.trim())) {
-      setState(() {
-        _currentUser!.licenseToken = token.trim();
-        _currentUser!.isLicenseActive = true;
-        _currentUser!.licenseExpiry = DateTime.now().add(const Duration(days: 30));
+    final cleanToken = token.trim();
+    if (cleanToken.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    if (_isSupabaseConfigured) {
+      try {
+        // 1. Verify if license exists and is 'libre'
+        final checkUrl = Uri.parse("$_supabaseUrl/rest/v1/licenses?token=eq.$cleanToken&status=eq.libre&select=*");
+        final checkResp = await http.get(checkUrl, headers: _supabaseHeaders);
         
-        _alerts.insert(
-          0,
-          TradeAlert(
-            message: "El usuario '${_currentUser!.username}' activó la licencia:\n$token",
-            category: "Sistema",
-            type: "success",
-            timestamp: DateTime.now(),
+        if (checkResp.statusCode == 200) {
+          final List<dynamic> results = jsonDecode(checkResp.body);
+          if (results.isNotEmpty) {
+            final expiryDate = DateTime.now().add(const Duration(days: 30)).toIso8601String();
+            
+            // 2. Mark license as used
+            await http.patch(
+              Uri.parse("$_supabaseUrl/rest/v1/licenses?token=eq.$cleanToken"),
+              headers: _supabaseHeaders,
+              body: jsonEncode({"status": "usada", "used_by": _currentUser!.username}),
+            );
+
+            // 3. Update user profile to active
+            final updateProfileResp = await http.patch(
+              Uri.parse("$_supabaseUrl/rest/v1/profiles?username=eq.${_currentUser!.username}"),
+              headers: _supabaseHeaders,
+              body: jsonEncode({
+                "is_license_active": true,
+                "license_token": cleanToken,
+                "license_expiry": expiryDate
+              }),
+            );
+
+            if (updateProfileResp.statusCode == 200 || updateProfileResp.statusCode == 204) {
+              setState(() {
+                _currentUser!.isLicenseActive = true;
+                _currentUser!.licenseToken = cleanToken;
+                _currentUser!.licenseExpiry = DateTime.now().add(const Duration(days: 30));
+                
+                _alerts.insert(
+                  0,
+                  TradeAlert(
+                    message: "Licencia de Supabase activada:\n$cleanToken",
+                    category: "Sistema",
+                    type: "success",
+                    timestamp: DateTime.now(),
+                  ),
+                );
+              });
+              _licenseTokenCtrl.clear();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Licencia activada con éxito en la nube por 30 días.'),
+                  backgroundColor: Color(0xFF00E676),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            _showErrorSnackBar("Token no válido o ya ha sido utilizado");
+          }
+        }
+      } catch (e) {
+        _showErrorSnackBar("Error al validar: $e");
+      }
+    } else {
+      // Local fallback
+      if (_localLicenses.contains(cleanToken)) {
+        setState(() {
+          _currentUser!.licenseToken = cleanToken;
+          _currentUser!.isLicenseActive = true;
+          _currentUser!.licenseExpiry = DateTime.now().add(const Duration(days: 30));
+          _localLicenses.remove(cleanToken);
+        });
+        _licenseTokenCtrl.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Licencia activada con éxito (Demo)'),
+            backgroundColor: Color(0xFF00E676),
           ),
         );
-      });
-      _licenseTokenCtrl.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Licencia activada con éxito para ${_currentUser!.name}'),
-          backgroundColor: const Color(0xFF00E676),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Licencia no válida o no encontrada en el sistema'),
-          backgroundColor: Color(0xFFFF4D4D),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      } else {
+        _showErrorSnackBar("Licencia no válida o no encontrada localmente");
+      }
     }
+    setState(() => _isLoading = false);
   }
 
-  void _generateLicenseToken() {
+  Future<void> _generateLicenseToken() async {
     final random = Random();
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     String part1 = List.generate(4, (index) => chars[random.nextInt(chars.length)]).join();
     String part2 = List.generate(4, (index) => chars[random.nextInt(chars.length)]).join();
     String part3 = List.generate(2, (index) => chars[random.nextInt(chars.length)]).join();
-    
     final token = "SNIPER-$part1-$part2-$part3";
-    setState(() {
-      _generatedLicenses.insert(0, token);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Nueva licencia generada: $token'),
-        backgroundColor: const Color(0xFF00E676),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
-  void _createNewUser(String name, String email, String username, String password) {
-    if (name.isEmpty || email.isEmpty || username.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor rellene todos los campos'),
-          backgroundColor: Color(0xFFFF4D4D),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    // Check if username already exists
-    if (_usersList.any((u) => u.username.toLowerCase() == username.toLowerCase())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('El nombre de usuario ya existe'),
-          backgroundColor: Color(0xFFFF4D4D),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _usersList.add(AppUser(
-        name: name,
-        email: email,
-        username: username,
-        password: password,
-        role: "user",
-        isLicenseActive: false,
-      ));
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Usuario "$username" creado exitosamente'),
-        backgroundColor: const Color(0xFF00E676),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  void _saveApiConfig(String apiKey, String secret, String server, String acc) {
-    setState(() {
-      _apiKey = apiKey;
-      _apiSecret = secret;
-      _brokerServer = server;
-      _accountNumber = acc;
-      _alerts.insert(
-        0,
-        TradeAlert(
-          message: "Credenciales de API y Servidor de Broker actualizados.",
-          category: "Sistema",
-          type: "success",
-          timestamp: DateTime.now(),
-        ),
-      );
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Configuración guardada correctamente'),
-        backgroundColor: Color(0xFF00E676),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  // --- USER DETAILS DIALOG (POPUP DETAILS WINDOW ON LIST CLICK) ---
-  void _showUserDetailsDialog(AppUser user) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        final hasActive = user.role == 'admin' || user.isLicenseActive;
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0D131C),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFF1E293B), width: 1.2),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
-                color: const Color(0xFF00E676),
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Detalles de Usuario',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
-              ),
-            ],
-          ),
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow('Nombre', user.name),
-              _buildDetailRow('Correo', user.email),
-              _buildDetailRow('Usuario', '@${user.username}'),
-              _buildDetailRow('Contraseña', user.password),
-              _buildDetailRow('Rol', user.role == 'admin' ? 'Administrador' : 'Usuario Regular'),
-              const Divider(color: Color(0xFF1E293B), height: 24),
-              _buildDetailRow(
-                'Estado Licencia',
-                user.role == 'admin'
-                    ? 'No requiere (Admin)'
-                    : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
-                valueColor: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
-              ),
-              if (user.role != 'admin' && user.isLicenseActive) ...[
-                const SizedBox(height: 6),
-                _buildDetailRow('Token Licencia', user.licenseToken ?? 'N/A'),
-                _buildDetailRow(
-                  'Expiración',
-                  user.licenseExpiry != null
-                      ? '${user.licenseExpiry!.day}/${user.licenseExpiry!.month}/${user.licenseExpiry!.year}'
-                      : 'N/A',
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text(
-                'CERRAR',
-                style: TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
+    if (_isSupabaseConfigured) {
+      try {
+        final resp = await http.post(
+          Uri.parse("$_supabaseUrl/rest/v1/licenses"),
+          headers: _supabaseHeaders,
+          body: jsonEncode({"token": token, "status": "libre"}),
         );
-      },
-    );
+        if (resp.statusCode == 201 || resp.statusCode == 200) {
+          setState(() {
+            _localLicenses.insert(0, token); // Mirror locally
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Licencia generada en Supabase: $token'),
+              backgroundColor: const Color(0xFF00E676),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        _showErrorSnackBar("Error generando licencia: $e");
+      }
+    } else {
+      setState(() {
+        _localLicenses.insert(0, token);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Licencia generada (Demo): $token'),
+          backgroundColor: const Color(0xFF00E676),
+        ),
+      );
+    }
   }
 
-  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(color: valueColor ?? Colors.white, fontSize: 13),
+  // --- CREATING USERS ---
+  Future<void> _createNewUser(String name, String email, String username, String password) async {
+    if (name.isEmpty || email.isEmpty || username.isEmpty || password.isEmpty) {
+      _showErrorSnackBar("Por favor rellene todos los campos");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    if (_isSupabaseConfigured) {
+      try {
+        // Insert user into Profiles
+        final resp = await http.post(
+          Uri.parse("$_supabaseUrl/rest/v1/profiles"),
+          headers: _supabaseHeaders,
+          body: jsonEncode({
+            "name": name,
+            "email": email,
+            "username": username,
+            "password": password,
+            "role": "user",
+            "is_license_active": false
+          }),
+        );
+
+        if (resp.statusCode == 201 || resp.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Usuario "$username" registrado en la nube.'),
+              backgroundColor: const Color(0xFF00E676),
+              behavior: SnackBarBehavior.floating,
             ),
-          ),
-        ],
+          );
+        } else {
+          _showErrorSnackBar("Error al crear. El usuario/correo podría ya existir.");
+        }
+      } catch (e) {
+        _showErrorSnackBar("Error al conectar con Supabase: $e");
+      }
+    } else {
+      // Local Database
+      if (_localUsers.any((u) => u.username == username)) {
+        _showErrorSnackBar("El usuario ya existe");
+      } else {
+        setState(() {
+          _localUsers.add(AppUser(
+            name: name,
+            email: email,
+            username: username,
+            password: password,
+            role: "user",
+            isLicenseActive: false,
+          ));
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Usuario "$username" creado localmente.')),
+        );
+      }
+    }
+    setState(() => _isLoading = false);
+  }
+
+  // Helper fetch registered users
+  Future<List<AppUser>> _fetchRegisteredUsers() async {
+    if (_isSupabaseConfigured) {
+      try {
+        final resp = await http.get(
+          Uri.parse("$_supabaseUrl/rest/v1/profiles?select=*"),
+          headers: _supabaseHeaders,
+        );
+        if (resp.statusCode == 200) {
+          final List<dynamic> body = jsonDecode(resp.body);
+          return body.map((item) => AppUser.fromJson(item)).toList();
+        }
+      } catch (_) {}
+    }
+    return _localUsers;
+  }
+
+  // Helper fetch system licenses
+  Future<List<Map<String, dynamic>>> _fetchSystemLicenses() async {
+    if (_isSupabaseConfigured) {
+      try {
+        final resp = await http.get(
+          Uri.parse("$_supabaseUrl/rest/v1/licenses?select=*"),
+          headers: _supabaseHeaders,
+        );
+        if (resp.statusCode == 200) {
+          final List<dynamic> body = jsonDecode(resp.body);
+          return body.map((item) => {
+            "token": item["token"].toString(),
+            "status": item["status"].toString(),
+            "used_by": item["used_by"]?.toString(),
+          }).toList();
+        }
+      } catch (_) {}
+    }
+    return _localLicenses.map((lic) => {
+      "token": lic,
+      "status": "libre",
+      "used_by": null,
+    }).toList();
+  }
+
+  void _showErrorSnackBar(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: const Color(0xFFFF4D4D),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // --- UI SCREENS BUILDERS ---
-
+  // --- USER NAVIGATION BUILDER ---
   @override
   Widget build(BuildContext context) {
-    // If not logged in, return the Login Screen
     if (_currentUser == null) {
       return _buildLoginScreen();
     }
@@ -843,7 +969,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 const SizedBox(height: 48),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: const Text(
                     'Iniciar Sesión',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
@@ -851,7 +977,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 const SizedBox(height: 6),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Text(
+                  child: const Text(
                     'Ingresa tus credenciales para acceder al sistema.',
                     style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                   ),
@@ -870,37 +996,40 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
                 ),
                 const SizedBox(height: 32),
-                Container(
-                  width: double.infinity,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)))
+                else
+                  Container(
+                    width: double.infinity,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _login,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    child: ElevatedButton(
+                      onPressed: _login,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'INICIAR SESIÓN',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          letterSpacing: 0.5,
+                          color: Colors.black,
+                        ),
                       ),
                     ),
-                    child: const Text(
-                      'INICIAR SESIÓN',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14,
-                        letterSpacing: 0.5,
-                        color: Colors.black,
-                      ),
-                    ),
                   ),
-                ),
                 const SizedBox(height: 20),
               ],
             ),
@@ -910,7 +1039,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- LOCK METHOD FOR REGULAR USERS ---
+  // --- LOCK WRAPPER ---
   Widget _runLockedPanelWrapper(Widget panel) {
     final isLocked = _currentUser!.role == 'user' && !_currentUser!.isLicenseActive;
     if (isLocked) {
@@ -959,7 +1088,139 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return panel;
   }
 
-  // License Screen
+  // --- SAVE API CONFIG ---
+  void _saveApiConfig(String apiKey, String secret, String server, String acc) {
+    setState(() {
+      _apiKey = apiKey;
+      _apiSecret = secret;
+      _brokerServer = server;
+      _accountNumber = acc;
+      _alerts.insert(
+        0,
+        TradeAlert(
+          message: "Credenciales de API y Servidor de Broker actualizados.",
+          category: "Sistema",
+          type: "success",
+          timestamp: DateTime.now(),
+        ),
+      );
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Configuración guardada correctamente'),
+        backgroundColor: Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // --- USER DETAILS DIALOG ---
+  void _showUserDetailsDialog(AppUser user) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final hasActive = user.role == 'admin' || user.isLicenseActive;
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0D131C),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFF1E293B), width: 1.2),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
+                color: const Color(0xFF00E676),
+                size: 24,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Detalles de Usuario',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+              ),
+            ],
+          ),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow('Nombre', user.name),
+              _buildDetailRow('Correo', user.email),
+              _buildDetailRow('Usuario', '@${user.username}'),
+              _buildDetailRow('Contraseña', user.password),
+              _buildDetailRow('Rol', user.role == 'admin' ? 'Administrador' : 'Usuario Regular'),
+              const Divider(color: Color(0xFF1E293B), height: 24),
+              _buildDetailRow(
+                'Estado Licencia',
+                user.role == 'admin'
+                    ? 'No requiere (Admin)'
+                    : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
+                valueColor: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+              ),
+              if (user.role != 'admin' && user.isLicenseActive) ...[
+                const SizedBox(height: 6),
+                _buildDetailRow('Token Licencia', user.licenseToken ?? 'N/A'),
+                _buildDetailRow(
+                  'Expiración',
+                  user.licenseExpiry != null
+                      ? '${user.licenseExpiry!.day}/${user.licenseExpiry!.month}/${user.licenseExpiry!.year}'
+                      : 'N/A',
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'CERRAR',
+                style: TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: valueColor ?? Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- BRONCE CONFIG SAVE ---
+  void _saveSupaConfig(String url, String key) {
+    setState(() {
+      _supabaseUrl = url;
+      _supabaseApiKey = key;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Configuración de Supabase guardada correctamente'),
+        backgroundColor: Color(0xFF00E676),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // --- MAIN LAYOUT BUILDER ---
+
   Widget _buildLicenseScreen() {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -1025,7 +1286,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       Text(
                         _currentUser!.isLicenseActive
                             ? 'Válida por 30 días.'
-                            : 'Debes introducir una licencia del Administrador.',
+                            : 'Debes activar un token para usar el sistema.',
                         style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
                       ),
                     ],
@@ -1102,60 +1363,60 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Container(
-            width: double.infinity,
-            height: 52,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)))
+          else
+            Container(
+              width: double.infinity,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
               ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ElevatedButton(
-              onPressed: () => _verifyLicense(_licenseTokenCtrl.text),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+              child: ElevatedButton(
+                onPressed: () => _verifyLicense(_licenseTokenCtrl.text),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Spacer(),
+                    const Text(
+                      'ACTIVAR LICENCIA',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        letterSpacing: 0.5,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.black,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.chevron_right, color: Color(0xFF00E676), size: 18),
+                    )
+                  ],
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Spacer(),
-                  const Text(
-                    'ACTIVAR LICENCIA',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 14,
-                      letterSpacing: 0.5,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.black,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.chevron_right, color: Color(0xFF00E676), size: 18),
-                  )
-                ],
-              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  // --- ADMINISTRATOR MANAGEMENT PANELS ---
-
-  // Admin Panel 1: Create and View Users
   Widget _buildAdminPanelScreen() {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -1172,8 +1433,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
           ),
           const SizedBox(height: 20),
-          
-          // Form Box
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -1186,28 +1445,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               children: [
                 const Text('Crear Nuevo Usuario', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
                 const SizedBox(height: 16),
-                
                 TextField(
                   controller: _adminNameCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Nombre Completo', Icons.person_outline),
                 ),
                 const SizedBox(height: 12),
-                
                 TextField(
                   controller: _adminEmailCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Correo Electrónico', Icons.email_outlined),
                 ),
                 const SizedBox(height: 12),
-                
                 TextField(
                   controller: _adminUserCtrl,
                   style: const TextStyle(fontSize: 13),
                   decoration: _buildInputDecoration('Nombre de Usuario', Icons.alternate_email),
                 ),
                 const SizedBox(height: 12),
-                
                 TextField(
                   controller: _adminPassCtrl,
                   obscureText: true,
@@ -1215,99 +1470,108 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   decoration: _buildInputDecoration('Contraseña', Icons.lock_outline),
                 ),
                 const SizedBox(height: 20),
-                
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      _createNewUser(
-                        _adminNameCtrl.text.trim(),
-                        _adminEmailCtrl.text.trim(),
-                        _adminUserCtrl.text.trim(),
-                        _adminPassCtrl.text,
-                      );
-                      _adminNameCtrl.clear();
-                      _adminEmailCtrl.clear();
-                      _adminUserCtrl.clear();
-                      _adminPassCtrl.clear();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00E676),
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)))
+                else
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        await _createNewUser(
+                          _adminNameCtrl.text.trim(),
+                          _adminEmailCtrl.text.trim(),
+                          _adminUserCtrl.text.trim(),
+                          _adminPassCtrl.text,
+                        );
+                        _adminNameCtrl.clear();
+                        _adminEmailCtrl.clear();
+                        _adminUserCtrl.clear();
+                        _adminPassCtrl.clear();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00E676),
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
+                      child: const Text('CREAR USUARIO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
                     ),
-                    child: const Text('CREAR USUARIO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
                   ),
-                ),
               ],
             ),
           ),
-          
           const SizedBox(height: 24),
           const Text('Usuarios Registrados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
           const SizedBox(height: 4),
           const Text('Toca un usuario para ver detalles', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
           const SizedBox(height: 12),
           
-          // User List in DB
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _usersList.length,
-            itemBuilder: (context, index) {
-              final user = _usersList[index];
-              final hasActive = user.role == 'admin' || user.isLicenseActive;
-              return GestureDetector(
-                onTap: () => _showUserDetailsDialog(user),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D131C),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: hasActive ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFFFF4D4D).withOpacity(0.12),
-                        child: Icon(
-                          user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
-                          color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
-                        ),
+          FutureBuilder<List<AppUser>>(
+            future: _fetchRegisteredUsers(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
+              }
+              final list = snapshot.data ?? [];
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: list.length,
+                itemBuilder: (context, index) {
+                  final user = list[index];
+                  final hasActive = user.role == 'admin' || user.isLicenseActive;
+                  return GestureDetector(
+                    onTap: () => _showUserDetailsDialog(user),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D131C),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
-                            const SizedBox(height: 2),
-                            Text('@${user.username} • ${user.email}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: hasActive ? const Color(0xFF00E676).withOpacity(0.15) : const Color(0xFFFF4D4D).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          user.role == 'admin' ? 'ADMIN' : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
-                          style: TextStyle(
-                            color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: hasActive ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFFFF4D4D).withOpacity(0.12),
+                            child: Icon(
+                              user.role == 'admin' ? Icons.admin_panel_settings_outlined : Icons.person_outline,
+                              color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(user.name, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                                const SizedBox(height: 2),
+                                Text('@${user.username} • ${user.email}', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: hasActive ? const Color(0xFF00E676).withOpacity(0.15) : const Color(0xFFFF4D4D).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              user.role == 'admin' ? 'ADMIN' : (user.isLicenseActive ? 'ACTIVA' : 'INACTIVA'),
+                              style: TextStyle(
+                                color: hasActive ? const Color(0xFF00E676) : const Color(0xFFFF4D4D),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -1316,7 +1580,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // Admin Panel 2: License Generation & Status Checking
   Widget _buildAdminLicensesScreen() {
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
@@ -1382,95 +1645,98 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(height: 28),
           const Text('Licencias Activas en el Sistema', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
           const SizedBox(height: 12),
-          _generatedLicenses.isEmpty
-              ? const Center(child: Text('No hay licencias generadas aún.', style: TextStyle(color: Color(0xFF64748B))))
-              : ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _generatedLicenses.length,
-                  itemBuilder: (context, index) {
-                    final license = _generatedLicenses[index];
-                    
-                    AppUser? userUsing;
-                    for (var u in _usersList) {
-                      if (u.licenseToken == license) {
-                        userUsing = u;
-                        break;
-                      }
-                    }
-                    
-                    final isUsed = userUsing != null;
+          
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _fetchSystemLicenses(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Color(0xFF00E676)));
+              }
+              final licensesList = snapshot.data ?? [];
+              if (licensesList.isEmpty) {
+                return const Center(child: Text('No hay licencias generadas.', style: TextStyle(color: Color(0xFF64748B))));
+              }
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: licensesList.length,
+                itemBuilder: (context, index) {
+                  final item = licensesList[index];
+                  final license = item["token"];
+                  final isUsed = item["status"] == "usada";
+                  final usedBy = item["used_by"];
 
-                    return GestureDetector(
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: license));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Licencia copiada al portapapeles: $license'),
-                            backgroundColor: const Color(0xFF00E676),
-                            behavior: SnackBarBehavior.floating,
-                            duration: const Duration(seconds: 1),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D131C),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+                  return GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: license));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Licencia copiada al portapapeles: $license'),
+                          backgroundColor: const Color(0xFF00E676),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 1),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.key, color: Color(0xFF00E676), size: 20),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    license,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13, letterSpacing: 0.5),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    isUsed ? 'Activada por: ${userUsing.name} (@${userUsing.username})' : 'Disponible para activación (Toca para copiar)',
-                                    style: TextStyle(
-                                      color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
-                                      fontSize: 10.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: isUsed ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFF64748B).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                isUsed ? 'USADA' : 'LIBRE',
-                                style: TextStyle(
-                                  color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      );
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D131C),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
                       ),
-                    );
-                  },
-                ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.key, color: Color(0xFF00E676), size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  license,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13, letterSpacing: 0.5),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  isUsed ? 'Activada por: @$usedBy' : 'Disponible para activación (Toca para copiar)',
+                                  style: TextStyle(
+                                    color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isUsed ? const Color(0xFF00E676).withOpacity(0.12) : const Color(0xFF64748B).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isUsed ? 'USADA' : 'LIBRE',
+                              style: TextStyle(
+                                color: isUsed ? const Color(0xFF00E676) : const Color(0xFF64748B),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  // --- OPERATIONS DASHBOARD ---
   Widget _buildDashboardScreen() {
     return _runLockedPanelWrapper(Column(
       children: [
@@ -1914,7 +2180,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- ALERTS SCREEN ---
   Widget _buildAlertsScreen() {
     return _runLockedPanelWrapper(Builder(
       builder: (context) {
@@ -2064,7 +2329,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ));
   }
 
-  // --- CONFIG SCREEN ---
   Widget _buildConfigScreen() {
     return _runLockedPanelWrapper(Builder(
       builder: (context) {
@@ -2073,30 +2337,87 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // SUPABASE CONFIGURATION (NEW SECTION)
+              const Text(
+                'Base de Datos Supabase',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Enlaza la app en la nube para sincronizar con los bots de MetaTrader.',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              
+              const Text('Supabase Project URL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _supaUrlCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: _buildInputDecoration('https://xxx.supabase.co', Icons.link_rounded),
+              ),
+              const SizedBox(height: 12),
+              
+              const Text('Supabase Anon Key (API Key)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _supaKeyCtrl,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: _buildInputDecoration('Ingresar Anon Key', Icons.key_rounded),
+              ),
+              const SizedBox(height: 16),
+              
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton(
+                  onPressed: () {
+                    _saveSupaConfig(_supaUrlCtrl.text.trim(), _supaKeyCtrl.text.trim());
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00E676),
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text('ENLAZAR SUPABASE', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                ),
+              ),
+              
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20.0),
+                child: Divider(color: Color(0xFF1E293B)),
+              ),
+              
+              // BROKER / MT4 CONFIGURATION
               const Text(
                 'Configuración del Broker',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               const Text(
-                'Configura tus llaves de API y el servidor del broker para enlazar y copiar automáticamente.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                'Configura las credenciales de tu cuenta del broker.',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
               ),
-              const SizedBox(height: 24),
-              const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 16),
+              
+              const Text('API Key / Token de Cliente', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
                 controller: _apiApiKeyCtrl,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration('Ingresar API Key', Icons.lock_open),
               ),
-              const SizedBox(height: 16),
-              const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 12),
+              
+              const Text('API Secret / Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
                 controller: _apiSecretCtrl,
                 obscureText: _obscureApiSecret,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration(
                   'Ingresar Password/Secret',
                   Icons.lock_outline,
@@ -2104,7 +2425,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     icon: Icon(
                       _obscureApiSecret ? Icons.visibility_off : Icons.visibility,
                       color: const Color(0xFF64748B),
-                      size: 20,
+                      size: 18,
                     ),
                     onPressed: () {
                       setState(() {
@@ -2114,38 +2435,41 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 12),
+              
+              const Text('Servidor de Trading (MT4/MT5)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
                 controller: _apiServerCtrl,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration(
                   'Ej. MetaQuotes-Demo',
                   Icons.dns_rounded,
                   suffix: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF64748B)),
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+              const SizedBox(height: 12),
+              
+              const Text('Número de Cuenta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
               const SizedBox(height: 8),
               TextField(
                 controller: _apiAccountCtrl,
                 keyboardType: TextInputType.number,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: _buildInputDecoration('Ej. 8827394', Icons.person_outline),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              
               Container(
                 width: double.infinity,
-                height: 52,
+                height: 50,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF00E676), Color(0xFF00B0FF)],
                     begin: Alignment.centerLeft,
                     end: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: ElevatedButton(
                   onPressed: () {
@@ -2160,7 +2484,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   child: Row(
@@ -2168,10 +2492,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     children: [
                       const Spacer(),
                       const Text(
-                        'GUARDAR CONFIGURACIÓN',
+                        'GUARDAR CREDENCIALES',
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
-                          fontSize: 14,
+                          fontSize: 13,
                           letterSpacing: 0.5,
                           color: Colors.black,
                         ),
@@ -2183,7 +2507,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                           color: Colors.black,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.check, color: Color(0xFF00E676), size: 18),
+                        child: const Icon(Icons.check, color: Color(0xFF00E676), size: 16),
                       )
                     ],
                   ),
