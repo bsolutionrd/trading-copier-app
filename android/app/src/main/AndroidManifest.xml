@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="trading_copy_app"
+        android:label="Sniper Money EA"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -65,6 +65,28 @@ class TradeSignal {
   });
 }
 
+class ClosedTrade {
+  final String symbol;
+  final String type; // BUY or SELL
+  final double entryPrice;
+  final double closePrice;
+  final double sl;
+  final double tp;
+  final double pnl;
+  final DateTime closeTime;
+
+  ClosedTrade({
+    required this.symbol,
+    required this.type,
+    required this.entryPrice,
+    required this.closePrice,
+    required this.sl,
+    required this.tp,
+    required this.pnl,
+    required this.closeTime,
+  });
+}
+
 class TradeAlert {
   final String message;
   final String category; // 'Operaciones', 'Sistema', 'Errores'
@@ -88,6 +110,9 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
+
+  // Tab state inside Operations
+  bool _showActiveTrades = true;
 
   // Licensing State
   String _licenseToken = "ACT-9928-TRDR-X7";
@@ -146,6 +171,50 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       pnl: 214.14,
       time: DateTime.now().subtract(const Duration(minutes: 3)),
       priceHistory: [2034.5, 2034.2, 2035.1, 2034.9, 2035.8, 2036.2, 2036.64],
+    ),
+  ];
+
+  // Simulated Closed Trades Data
+  final List<ClosedTrade> _closedTrades = [
+    ClosedTrade(
+      symbol: "BTCUSD",
+      type: "BUY",
+      entryPrice: 62450.00,
+      closePrice: 62690.00,
+      sl: 61900.00,
+      tp: 62690.00,
+      pnl: 240.00,
+      closeTime: DateTime.now().subtract(const Duration(hours: 2)),
+    ),
+    ClosedTrade(
+      symbol: "USDJPY",
+      type: "SELL",
+      entryPrice: 150.45,
+      closePrice: 150.62,
+      sl: 150.62,
+      tp: 150.10,
+      pnl: -85.00,
+      closeTime: DateTime.now().subtract(const Duration(hours: 5)),
+    ),
+    ClosedTrade(
+      symbol: "EURUSD",
+      type: "SELL",
+      entryPrice: 1.08720,
+      closePrice: 1.08610,
+      sl: 1.09100,
+      tp: 1.08500,
+      pnl: 110.00,
+      closeTime: DateTime.now().subtract(const Duration(days: 1)),
+    ),
+    ClosedTrade(
+      symbol: "GBPUSD",
+      type: "BUY",
+      entryPrice: 1.26100,
+      closePrice: 1.25950,
+      sl: 1.25950,
+      tp: 1.26700,
+      pnl: -45.00,
+      closeTime: DateTime.now().subtract(const Duration(days: 1, hours: 3)),
     ),
   ];
 
@@ -396,7 +465,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // --- SCREENS REDESIGN ---
+  // --- SCREENS ---
 
   // 1. License Screen
   Widget _buildLicenseScreen() {
@@ -724,138 +793,314 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
 
-        // Live Title Row
+        // Sliding Toggle (Active vs. Closed Trades)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D131C),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _showActiveTrades = true),
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _showActiveTrades ? const Color(0xFF00E676) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Activas',
+                        style: TextStyle(
+                          color: _showActiveTrades ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _showActiveTrades = false),
+                    child: Container(
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: !_showActiveTrades ? const Color(0xFF00E676) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Cerradas',
+                        style: TextStyle(
+                          color: !_showActiveTrades ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // Section Title Header
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 6.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Operaciones en Tiempo Real',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+              Text(
+                _showActiveTrades ? 'Operaciones en Tiempo Real' : 'Historial de Operaciones Cerradas',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
               ),
+              _showActiveTrades
+                  ? Row(
+                      children: const [
+                        CircleAvatar(
+                          radius: 3,
+                          backgroundColor: Color(0xFF00E676),
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Color(0xFF00E676),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: const [
+                        Icon(Icons.history_rounded, color: Color(0xFF64748B), size: 13),
+                        SizedBox(width: 6),
+                        Text(
+                          'HISTORIAL',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+            ],
+          ),
+        ),
+
+        // Trades List (Conditional rendering)
+        Expanded(
+          child: _showActiveTrades
+              ? _buildActiveTradesList()
+              : _buildClosedTradesList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActiveTradesList() {
+    if (_activeTrades.isEmpty) {
+      return const Center(
+        child: Text(
+          'No hay operaciones abiertas en este momento.',
+          style: TextStyle(color: Color(0xFF64748B)),
+        ),
+      );
+    }
+    return ListView.builder(
+      itemCount: _activeTrades.length,
+      itemBuilder: (context, index) {
+        final trade = _activeTrades[index];
+        final isBuy = trade.type == "BUY";
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D131C),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+          ),
+          child: Column(
+            children: [
               Row(
                 children: [
-                  const CircleAvatar(
-                    radius: 3,
-                    backgroundColor: Color(0xFF00E676),
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      color: Color(0xFF00E676),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isBuy
+                          ? const Color(0xFF00E676).withOpacity(0.12)
+                          : const Color(0xFFFF4D4D).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(6),
                     ),
+                    child: Text(
+                      trade.type,
+                      style: TextStyle(
+                        color: isBuy
+                            ? const Color(0xFF00E676)
+                            : const Color(0xFFFF4D4D),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    trade.symbol,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  
+                  // Sparkline Widget
+                  SizedBox(
+                    width: 55,
+                    height: 24,
+                    child: CustomPaint(
+                      painter: SparklinePainter(
+                        data: trade.priceHistory,
+                        color: trade.pnl >= 0
+                            ? const Color(0xFF00E676)
+                            : const Color(0xFFFF4D4D),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  
+                  Text(
+                    '${trade.pnl >= 0 ? '+' : ''}\$${trade.pnl.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: trade.pnl >= 0
+                          ? const Color(0xFF00E676)
+                          : const Color(0xFFFF4D4D),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 20, color: Color(0xFF1E293B)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildTradeDetailColumn('Entry Price', trade.entryPrice.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('Current Price', trade.currentPrice.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('S/L', trade.sl.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('T/P', trade.tp.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildClosedTradesList() {
+    if (_closedTrades.isEmpty) {
+      return const Center(
+        child: Text(
+          'No hay operaciones cerradas registradas.',
+          style: TextStyle(color: Color(0xFF64748B)),
+        ),
+      );
+    }
+    return ListView.builder(
+      itemCount: _closedTrades.length,
+      itemBuilder: (context, index) {
+        final trade = _closedTrades[index];
+        final isBuy = trade.type == "BUY";
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D131C),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isBuy
+                          ? const Color(0xFF00E676).withOpacity(0.08)
+                          : const Color(0xFFFF4D4D).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      trade.type,
+                      style: TextStyle(
+                        color: isBuy
+                            ? const Color(0xFF00E676).withOpacity(0.8)
+                            : const Color(0xFFFF4D4D).withOpacity(0.8),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    trade.symbol,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${trade.pnl >= 0 ? '+' : ''}\$${trade.pnl.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: trade.pnl >= 0
+                          ? const Color(0xFF00E676)
+                          : const Color(0xFFFF4D4D),
+                    ),
+                  ),
+                ],
+              ),
+              const Divider(height: 20, color: Color(0xFF1E293B)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildTradeDetailColumn('Entry Price', trade.entryPrice.toStringAsFixed(trade.symbol == "XAUUSD" || trade.symbol == "BTCUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('Close Price', trade.closePrice.toStringAsFixed(trade.symbol == "XAUUSD" || trade.symbol == "BTCUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('S/L', trade.sl.toStringAsFixed(trade.symbol == "XAUUSD" || trade.symbol == "BTCUSD" ? 2 : 5)),
+                  _buildTradeDetailColumn('T/P', trade.tp.toStringAsFixed(trade.symbol == "XAUUSD" || trade.symbol == "BTCUSD" ? 2 : 5)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'Cerrado: ${trade.closeTime.hour.toString().padLeft(2, '0')}:${trade.closeTime.minute.toString().padLeft(2, '0')} - '
+                    '${trade.closeTime.day}/${trade.closeTime.month}/${trade.closeTime.year}',
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.5),
                   ),
                 ],
               )
             ],
           ),
-        ),
-
-        // Trades List
-        Expanded(
-          child: _activeTrades.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No hay operaciones abiertas en este momento.',
-                    style: TextStyle(color: Color(0xFF64748B)),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: _activeTrades.length,
-                  itemBuilder: (context, index) {
-                    final trade = _activeTrades[index];
-                    final isBuy = trade.type == "BUY";
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D131C),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isBuy
-                                      ? const Color(0xFF00E676).withOpacity(0.12)
-                                      : const Color(0xFFFF4D4D).withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  trade.type,
-                                  style: TextStyle(
-                                    color: isBuy
-                                        ? const Color(0xFF00E676)
-                                        : const Color(0xFFFF4D4D),
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                trade.symbol,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const Spacer(),
-                              
-                              // Sparkline Widget
-                              SizedBox(
-                                width: 55,
-                                height: 24,
-                                child: CustomPaint(
-                                  painter: SparklinePainter(
-                                    data: trade.priceHistory,
-                                    color: trade.pnl >= 0
-                                        ? const Color(0xFF00E676)
-                                        : const Color(0xFFFF4D4D),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              
-                              Text(
-                                '${trade.pnl >= 0 ? '+' : ''}\$${trade.pnl.toStringAsFixed(2)}',
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: trade.pnl >= 0
-                                      ? const Color(0xFF00E676)
-                                      : const Color(0xFFFF4D4D),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 20, color: Color(0xFF1E293B)),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              _buildTradeDetailColumn('Entry Price', trade.entryPrice.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
-                              _buildTradeDetailColumn('Current Price', trade.currentPrice.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
-                              _buildTradeDetailColumn('S/L', trade.sl.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
-                              _buildTradeDetailColumn('T/P', trade.tp.toStringAsFixed(trade.symbol == "XAUUSD" ? 2 : 5)),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -1223,10 +1468,8 @@ class SparklinePainter extends CustomPainter {
 
     for (int i = 0; i < data.length; i++) {
       double x = i * stepX;
-      // Normalize values between 0.0 and size.height
       double y = size.height - ((data[i] - minVal) / valRange * size.height);
       
-      // Ensure border padding
       if (y < 2) y = 2;
       if (y > size.height - 2) y = size.height - 2;
 
